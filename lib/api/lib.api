@@ -23,6 +23,7 @@ public final class app/cash/lninvoice/Bech32Data$Companion$Encoding : java/lang/
 	public static final field BECH32 Lapp/cash/lninvoice/Bech32Data$Companion$Encoding;
 	public static final field BECH32M Lapp/cash/lninvoice/Bech32Data$Companion$Encoding;
 	public final fun getConst ()I
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lapp/cash/lninvoice/Bech32Data$Companion$Encoding;
 	public static fun values ()[Lapp/cash/lninvoice/Bech32Data$Companion$Encoding;
 }
@@ -77,6 +78,7 @@ public final class app/cash/lninvoice/FieldTags : java/lang/Enum {
 	public static final field PAYEE_NODE Lapp/cash/lninvoice/FieldTags;
 	public static final field PAYMENT_HASH Lapp/cash/lninvoice/FieldTags;
 	public static final field SECRET Lapp/cash/lninvoice/FieldTags;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public final fun getTag ()I
 	public static fun valueOf (Ljava/lang/String;)Lapp/cash/lninvoice/FieldTags;
 	public static fun values ()[Lapp/cash/lninvoice/FieldTags;
@@ -115,6 +117,7 @@ public final class app/cash/lninvoice/Network : java/lang/Enum {
 	public static final field Companion Lapp/cash/lninvoice/Network$Companion;
 	public static final field MAIN Lapp/cash/lninvoice/Network;
 	public static final field TEST Lapp/cash/lninvoice/Network;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lapp/cash/lninvoice/Network;
 	public static fun values ()[Lapp/cash/lninvoice/Network;
 }

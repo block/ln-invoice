@@ -1,20 +1,20 @@
 [versions]
-arrow = "1.2.0"
+arrow = "2.0.1"
 bc = "1.75"
-bitcoinj = "0.16.2"
-guava = "32.1.1-jre"
-junit = "5.9.3"
-kotest = "5.6.2"
-kotestArrow = "1.3.3"
+bitcoinj = "0.17"
+guava = "33.4.6-jre"
+junit = "5.12.1"
+kotest = "5.9.1"
+kotestArrow = "2.0.0"
 # @pin
-kotlin = "1.7.22"
-kotlinBinaryCompatibilityPlugin = "0.13.2"
-mavenPublishGradlePlugin = "0.25.3"
+kotlin = "2.1.20"
+kotlinBinaryCompatibilityPlugin = "0.17.0"
+mavenPublishGradlePlugin = "0.27.0"
 okio = "3.4.0"
-quiver = "0.3.0"
-slf4j = "2.0.7"
-versionCatalogUpdateGradlePlugin = "0.8.1"
-versionsGradlePlugin = "0.47.0"
+quiver = "1.0.0"
+slf4j = "2.0.17"
+versionCatalogUpdateGradlePlugin = "0.8.2"
+versionsGradlePlugin = "0.50.0"
 
 [libraries]
 arrowCore = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
@@ -43,7 +43,7 @@ kotest = [
 ]
 
 [plugins]
-dokka = "org.jetbrains.dokka:1.8.20"
+dokka = "org.jetbrains.dokka:2.0.0"
 kotlinBinaryCompatibilityPlugin = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "kotlinBinaryCompatibilityPlugin" }
 kotlinGradlePlugin = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 mavenPublishGradlePlugin = { id = "com.vanniktech.maven.publish.base", version.ref = "mavenPublishGradlePlugin" }

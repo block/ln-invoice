@@ -35,8 +35,8 @@ import arrow.core.toOption
 import okio.ByteString
 import okio.ByteString.Companion.encodeUtf8
 import okio.ByteString.Companion.toByteString
-import org.bitcoinj.core.ECKey
-import org.bitcoinj.core.Sha256Hash
+import org.bitcoinj.base.Sha256Hash
+import org.bitcoinj.crypto.ECKey
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.time.Duration

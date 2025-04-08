@@ -1,6 +1,9 @@
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.kotlin.dsl.support.kotlinCompilerOptions
 import org.jetbrains.kotlin.gradle.plugin.KotlinPluginWrapper
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import org.jetbrains.kotlin.gradle.tasks.KotlinJvmCompile
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
   alias(libs.plugins.kotlinGradlePlugin) apply false
@@ -60,27 +63,21 @@ subprojects {
   apply(plugin = "version-catalog")
 
   // Only apply if the project has the kotlin plugin added:
-  plugins.withType<KotlinPluginWrapper> {
-    val compileKotlin by tasks.getting(KotlinCompile::class) {
-      kotlinOptions {
-        jvmTarget = "11"
-        allWarningsAsErrors = true
-      }
+  tasks.withType<KotlinJvmCompile>().configureEach {
+    compilerOptions {
+      jvmTarget.set(JvmTarget.JVM_17)
+      allWarningsAsErrors.set(true)
     }
-    val compileTestKotlin by tasks.getting(KotlinCompile::class) {
-      kotlinOptions {
-        jvmTarget = "11"
-        allWarningsAsErrors = true
-      }
+  }
+
+  plugins.withType<KotlinPluginWrapper> {
+    tasks.withType<GenerateModuleMetadata> {
+      suppressedValidationErrors.add("enforced-platform")
     }
 
     dependencies {
       add("testImplementation", project.rootProject.libs.junitApi)
       add("testRuntimeOnly", project.rootProject.libs.junitEngine)
-    }
-
-    tasks.withType<GenerateModuleMetadata> {
-      suppressedValidationErrors.add("enforced-platform")
     }
   }
 
@@ -108,7 +105,6 @@ subprojects {
       }
     }
   }
-
 }
 
 fun isNonStable(version: String): Boolean {
