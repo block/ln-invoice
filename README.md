@@ -23,7 +23,7 @@ val request: ErrorOr<PaymentRequest> = PaymentRequest.parse(sample)
 
 See `app.cash.lninvoice.PaymentRequestTest` for more parsing examples, lifted directly from the BOLT-11 spec.
 
-LN-Invoice is functional programming safe by default, using [Quiver](https://github.com/cashapp/quiver)
+LN-Invoice is functional programming safe by default, using [Quiver](https://github.com/block/quiver)
 (an extension of [Arrow](https://arrow-kt.io/)). If you prefer to deal with thrown exceptions when parsing,
 simply add `.orThrow()`.
 
@@ -43,7 +43,7 @@ val sigBytes: ByteArray = signature.toByteArray()
 
 ## Documentation
 
-The [API documentation](https://cashapp.github.io/ln-invoice) is published with each release.
+The [API documentation](https://block.github.io/ln-invoice) is published with each release.
 
 ## Changelog
 
