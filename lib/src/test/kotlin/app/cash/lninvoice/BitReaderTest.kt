@@ -16,10 +16,14 @@
 
 package app.cash.lninvoice
 
+import app.cash.lninvoice.BitReader.Companion.FIVE_BIT_MASK
 import app.cash.lninvoice.Invoices.sampleWithDescriptionHash
 import app.cash.quiver.extensions.orThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
+import okio.ByteString
+import okio.ByteString.Companion.decodeHex
+import okio.ByteString.Companion.toByteString
 
 class BitReaderTest : StringSpec({
 
@@ -68,5 +72,16 @@ class BitReaderTest : StringSpec({
     val data = "lnurl1xyerxdu27jy".toBech32Data().orThrow().payload
     val reader = BitReader(data)
     reader.byteString(24).string(Charsets.UTF_8) shouldBe "123"
+  }
+
+  "testing off-by-one bit padding when reading uneven bits" {
+    // Given two 5-bit bytes: 11111 00000
+    // Combine them:  1111100000
+    // Read 7 bits:   1111100
+    // Pad to 8 bits: 11111000
+    //                11111000 = f8 in hex
+    // With an off-by-one error, this would result in 1111100 (7c in hex).
+    val data = byteArrayOf(0b11111.toByte(), 0b00000.toByte()).toByteString()
+    BitReader(data).byteString(7).hex() shouldBe "f8"
   }
 })

@@ -66,16 +66,22 @@ class BitReader(
 
   /** Read the lower 5 bits from each byte until `bits` bits have been read, concatenate & return the resulting bytes */
   internal fun byteString(bits: Int): ByteString {
-    tailrec fun bitList(remaining: Int, bits: String = ""): String =
-      if (remaining == 0) {
-        bits
+    tailrec fun bitList(remaining: Int, acc: String = ""): String =
+      if (remaining <= 0) {
+        // Pad the byte boundary
+        val rem = acc.length % 8
+        if (rem == 0) acc else acc + "0".repeat(8 - rem)
       } else {
-        val nextByte = data[byteIndex++].toInt()
+        // Set the upper bits to zero
+        val nextByte = data[byteIndex++].toInt() and FIVE_BIT_MASK
+
         val bitsToRead = remaining.coerceAtMost(5)
         val bitString = Integer.toBinaryString(nextByte).padStart(5, '0').take(bitsToRead)
-        bitList((remaining - 5).coerceAtLeast(0), bits + bitString)
+
+        bitList((remaining - bitsToRead).coerceAtLeast(0), acc + bitString)
       }
-    return bitList(bits).chunked(8).map { Integer.parseInt(it, 2).toByte() }.toByteArray().toByteString()
+
+    return bitList(bits).chunked(8).map { chunk -> Integer.parseInt(chunk, 2).toByte() }.toByteArray().toByteString()
   }
 
   /** Read `bytes` bytes (concatenating the lower 5 bits of each, as per `byteString`) and convert into UTF_8 text */
@@ -90,5 +96,9 @@ class BitReader(
     return (0..bi.bitLength()).fold(emptySet()) { acc, i ->
       if (bi.testBit(i)) acc + i else acc
     }
+  }
+
+  companion object {
+    const val FIVE_BIT_MASK = 0x1F
   }
 }

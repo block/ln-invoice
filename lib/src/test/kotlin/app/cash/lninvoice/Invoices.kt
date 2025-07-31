@@ -67,5 +67,12 @@ object Invoices {
     "qqqqqqqqqz599y53s3ujmcfjp5xrdap68qxymkqphwsexhmhr8wdz5usdzkzrse33chw6dlp3jhuhge9ley7j" +
     "2ayx36kawe7kmgg8sv5ugdyusdcqzn8z9x"
 
+  const val sampleWithUnevenBytes = "lnbc820n1p58jmqqdq4ga6kccmgw3jkx6pqf3xyxpp5gz4f05gw6k5sxypgqr" +
+    "ap9sp240lwtxe9tqzull4k9mwxuq2n2r5ssp598qjc2nx7xtjx6csk5j7cgh25q2ahwpurcv859dhwj8n2xw4" +
+    "3lds9qrsgqcqpcxqzfvrzjqg4aqpxjt4y6x7ncy45rcwue0r8zp90sflh6ufuvr4844aa36x4vgzqdryqqzqq" +
+    "qqsqqqqqqqqqqqqqq9grzjqdt5stcc3ms9jelz5eqg0mrzz45ckf30f2whjt6g2yqwhkdc9yy82z2lw5qqzxs" +
+    "qq5qqqqqqqqqqqqqq9gxhvk5ns8sdtjhp097v5mlv8dl7zuxuale70lct7r0vf6hkggf7pkps6qwgnuxatt5r" +
+    "tuzu8vjp3u3q02vuejj5ynalhdt2ydclc2rngpqtm9kn"
+
   val sampleDecoded: Bech32Data by lazy { sample.toBech32Data().orThrow() }
 }
