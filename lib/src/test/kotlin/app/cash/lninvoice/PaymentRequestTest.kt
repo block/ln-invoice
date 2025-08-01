@@ -28,7 +28,6 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeNone
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.arrow.core.shouldBeSome
-import io.kotest.assertions.assertSoftly
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
@@ -40,6 +39,7 @@ import io.kotest.matchers.throwable.haveCauseOfType
 import io.kotest.matchers.throwable.haveMessage
 import okio.ByteString.Companion.decodeHex
 import okio.ByteString.Companion.toByteString
+import java.security.MessageDigest
 import java.time.Instant
 
 class PaymentRequestTest : StringSpec({
@@ -65,13 +65,13 @@ class PaymentRequestTest : StringSpec({
         ),
         TaggedField(5, 20, "1000000000000000000000000000000001001000".decodeHex())
       )
-      invoice.signature shouldBe ("d7904cc4b74a22269c68c1df68a96c214d651b9376e9f164d3604da4b7deccce0e82aaab4c85d358ea14d0ae342da30812f95d976082eaac813911dae01af3c1").decodeHex()
+      invoice.signature shouldBe ("d7904cc4b74a22269c68c1df68a96c214d651b9376e9f164d3604da4b7deccce0e82aaab4c85d358ea14d0ae342da30812f95d976082eaac813911dae01af3c101").decodeHex()
     }
   }
 
   "a valid invoice with uneven bytes" {
     val invoice = PaymentRequest.parse(sampleWithUnevenBytes).shouldBeRight()
-    invoice.signature.hex().shouldBe("35d96a4e0783572b85e5f329bfb0edff85c373bfcf9ffc2fc37b13abd9084f8360c3407227c3756ba0d7c170ec9063c881ea6733295093efeed5a88dc7f0a1cd")
+    invoice.signature.hex().shouldBe("35d96a4e0783572b85e5f329bfb0edff85c373bfcf9ffc2fc37b13abd9084f8360c3407227c3756ba0d7c170ec9063c881ea6733295093efeed5a88dc7f0a1cd01")
     invoice.paymentHash.shouldBe("40aa97d10ed5a903102800fa12c02aabfee59b255805cffeb62edc6e015350e9")
     invoice.payeeNodePublicKey.hex().shouldBe("02372c5d8559e4c0d3943b0e86360207491cb8ac669b7def06427860e566771828")
   }

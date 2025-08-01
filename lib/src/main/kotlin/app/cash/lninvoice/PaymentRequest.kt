@@ -32,7 +32,6 @@ import arrow.core.raise.either
 import arrow.core.right
 import arrow.core.some
 import arrow.core.toOption
-import jdk.internal.icu.impl.Utility.hex
 import okio.ByteString
 import okio.ByteString.Companion.encodeUtf8
 import okio.ByteString.Companion.toByteString
@@ -40,7 +39,6 @@ import org.bitcoinj.base.Sha256Hash
 import org.bitcoinj.crypto.ECKey
 import java.math.BigInteger
 import java.nio.ByteBuffer
-import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 
@@ -62,8 +60,6 @@ data class PaymentRequest(
   val signature: ByteString,
   /** Checksum for this request */
   val hash: ByteString,
-  /** The ECDSA recovery ID associated with the signature */
-  private val signatureRecoveryId: Int,
 ) {
 
   private val taggedFieldMap: Map<Int, TaggedField> = taggedFields.associateBy { it.tag }
@@ -90,6 +86,8 @@ data class PaymentRequest(
 
   /** Recovers the payee node public key from the signature */
   val payeeNodePublicKey: ByteString by lazy {
+    val signatureRecoveryId = signature[64].toUByte().toInt()
+
     val r = BigInteger(signature.substring(0, 32).hex(), 16)
     val s = BigInteger(signature.substring(32, 64).hex(), 16)
     val ellipticCurveSignature = ECKey.ECDSASignature(r, s)
@@ -180,9 +178,8 @@ data class PaymentRequest(
         amount = amount,
         paymentHash = paymentHash,
         taggedFields = validatedTaggedFields,
-        signature = signature.substring(0, 64),
+        signature = signature,
         hash = hashData(decoded),
-        signatureRecoveryId = signature[64].toUByte().toInt()
       )
     }
 
@@ -214,10 +211,7 @@ data class PaymentRequest(
       buffer.put(hrp.toByteArray())
       buffer.put(dataWithoutSig)
       buffer.flip()
-
-      return MessageDigest.getInstance("SHA-256")
-        .digest(buffer.array())
-        .toByteString()
+      return buffer.toByteString().sha256()
     }
 
     /**
