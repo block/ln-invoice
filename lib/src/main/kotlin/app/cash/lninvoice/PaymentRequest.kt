@@ -59,7 +59,7 @@ data class PaymentRequest(
   /** Signature provided by the requesting node */
   val signature: ByteString,
   /** Checksum for this request */
-  val hash: ByteString
+  val hash: ByteString,
 ) {
 
   private val taggedFieldMap: Map<Int, TaggedField> = taggedFields.associateBy { it.tag }
@@ -86,15 +86,14 @@ data class PaymentRequest(
 
   /** Recovers the payee node public key from the signature */
   val payeeNodePublicKey: ByteString by lazy {
-    val sigBytes = BitReader(signature).byteString(520)
-    val recoveryKey = signature[signature.size - 1].toInt()
-    val ellipticCurveSignature = ECKey.ECDSASignature(
-      BigInteger(sigBytes.substring(0, 32).hex(), 16),
-      BigInteger(sigBytes.substring(32, 64).hex(), 16)
-    )
+    val signatureRecoveryId = signature[64].toUByte().toInt()
+
+    val r = BigInteger(signature.substring(0, 32).hex(), 16)
+    val s = BigInteger(signature.substring(32, 64).hex(), 16)
+    val ellipticCurveSignature = ECKey.ECDSASignature(r, s)
 
     ECKey.recoverFromSignature(
-      recoveryKey,
+      signatureRecoveryId,
       ellipticCurveSignature,
       Sha256Hash.wrap(hash.toByteArray()),
       true
@@ -170,14 +169,17 @@ data class PaymentRequest(
 
       val validatedTaggedFields = validateTaggedFields(taggedFields, strict).bind()
 
+      val sigWords = decoded.payload.substring(decoded.payload.size - SIGNATURE_BYTE_SIZE, decoded.payload.size)
+      val signature = BitReader(sigWords).byteString(520)
+
       PaymentRequest(
         network = network,
         timestamp = timestamp,
         amount = amount,
         paymentHash = paymentHash,
         taggedFields = validatedTaggedFields,
-        signature = decoded.payload.toByteArray().takeLast(SIGNATURE_BYTE_SIZE).toByteArray().toByteString(),
-        hash = hashData(decoded)
+        signature = signature,
+        hash = hashData(decoded),
       )
     }
 
