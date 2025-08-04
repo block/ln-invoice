@@ -44,7 +44,6 @@ subprojects {
 // Configure Dokka multi-module task
 tasks.dokkaHtmlMultiModule {
   outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
-  includes.from("dokka-docs/module.md")
   moduleName.set("ln-invoice")
   moduleVersion.set(project.version.toString())
 }
