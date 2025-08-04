@@ -4,6 +4,10 @@ Change Log
 Next release
 ----------------------------
 
+Version 0.0.2 *(2025-08-04)*
+----------------------------
+
+* Fixes parsing of uneven-byte length invoices. <Hugo Muller-Downing>
 
 Version 0.0.1 *(2023-07-25)*
 ----------------------------
