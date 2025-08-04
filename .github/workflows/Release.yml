@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout the repo
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Check if tag is on main branch
         id: check-branch
