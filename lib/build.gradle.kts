@@ -1,8 +1,22 @@
-import org.jetbrains.dokka.gradle.DokkaTask
-import java.net.URL
-
 plugins {
-  `java-library`
+  id("java-library")
+  id("org.jetbrains.kotlin.jvm")
+  id("com.vanniktech.maven.publish") version "0.33.0"
+}
+
+repositories {
+  mavenCentral()
+}
+
+java {
+  toolchain {
+    languageVersion.set(JavaLanguageVersion.of(11))
+  }
+  withSourcesJar()
+}
+
+mavenPublishing {
+  configure(com.vanniktech.maven.publish.KotlinJvm())
 }
 
 dependencies {
@@ -24,29 +38,4 @@ dependencies {
 
   testRuntimeOnly(libs.junitEngine)
   testRuntimeOnly(libs.slf4jSimple)
-
-  apply(plugin = libs.plugins.dokka.get().pluginId)
 }
-
-tasks.withType<Test>().configureEach {
-  useJUnitPlatform()
-}
-
-tasks.withType<DokkaTask>().configureEach {
-  dokkaSourceSets {
-    named("main") {
-      moduleName.set("LN-Invoice")
-
-      // Includes custom documentation
-      includes.from("module.md")
-
-      // Points source links to GitHub
-      sourceLink {
-        localDirectory.set(file("src/main/kotlin"))
-        remoteUrl.set(URL("https://github.com/cashapp/ln-invoice/tree/master/lib/src/main/kotlin"))
-        remoteLineSuffix.set("#L")
-      }
-    }
-  }
-}
-
