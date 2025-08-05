@@ -1,14 +1,10 @@
-rootProject.name = "ln-invoice"
-
-plugins {
-  `gradle-enterprise`
-}
-
-gradleEnterprise {
-  buildScan {
-    termsOfServiceUrl = "https://gradle.com/terms-of-service"
-    termsOfServiceAgree = "yes"
+pluginManagement {
+  repositories {
+    gradlePluginPortal()
+    mavenCentral()
   }
 }
+
+rootProject.name = "ln-invoice"
 
 include(":lib")
