@@ -20,6 +20,7 @@ import app.cash.lninvoice.Bech32Data.Companion.Encoding.BECH32
 import app.cash.lninvoice.Invoices.pubkeyRecoveryTest
 import app.cash.lninvoice.Invoices.sample
 import app.cash.lninvoice.Invoices.sampleDecoded
+import app.cash.lninvoice.Invoices.sampleSignet
 import app.cash.lninvoice.Invoices.sampleWithDescriptionAndDescriptionHash
 import app.cash.lninvoice.Invoices.sampleWithPaymentHash
 import app.cash.lninvoice.Invoices.sampleWithUnevenBytes
@@ -80,6 +81,12 @@ class PaymentRequestTest : StringSpec({
     val encoded = Bech32Data(BECH32, "lntb25m", sampleDecoded.payload).encoded
 
     PaymentRequest.parse(encoded).shouldBeRight().network shouldBe Network.TEST
+  }
+
+  "invoice parsing succeeds for signet" {
+    val invoice = PaymentRequest.parse(sampleSignet).shouldBeRight()
+    invoice.network shouldBe Network.SIG
+    invoice.payeeNodePublicKey.hex().shouldBe("02d37dd04cd27c141708e883e622583792e59de8c93c24c13e5df31fd6aa942102")
   }
 
   "a valid invoice should have a payment hash" {
