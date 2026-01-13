@@ -25,12 +25,14 @@ import arrow.core.right
  */
 enum class Network {
   MAIN,
-  TEST;
+  TEST,
+  SIG;
 
   companion object {
     fun parse(value: String): ErrorOr<Network> = when (value) {
       "bc" -> MAIN.right()
       "tb" -> TEST.right()
+      "tbs" -> SIG.right()
       else -> UnknownNetworkException(value).left()
     }
   }

@@ -74,5 +74,12 @@ object Invoices {
     "qq5qqqqqqqqqqqqqq9gxhvk5ns8sdtjhp097v5mlv8dl7zuxuale70lct7r0vf6hkggf7pkps6qwgnuxatt5r" +
     "tuzu8vjp3u3q02vuejj5ynalhdt2ydclc2rngpqtm9kn"
 
+
+  const val sampleSignet = "lntbs20020n1p5kdssjpp5tj0x70z6j8ajw7jh2hsd06hjwlwt5a53rgmc48ksda6ea2ur" +
+    "cpuqdqqcqzzsxqyz5vqsp55w9nlefu2zz2hp65vpvqexxuf9knqu4ea6k5c3kt5jufuzkwyuxs9qxpqysgq42g" +
+    "d376f5lpcf4vrq050fmuptnvczzaudds0ptcj8v2gq3skxvlz8kn0h8m9vf8j3yzgqnlq2pqgds3huxts8s2hc" +
+    "r7seyuwj9g0t0cpg3mn4f"
+
+
   val sampleDecoded: Bech32Data by lazy { sample.toBech32Data().orThrow() }
 }
