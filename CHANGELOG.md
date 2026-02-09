@@ -4,6 +4,10 @@ Change Log
 Next release
 ----------------------------
 
+Version 0.0.4 *(2026-02-10)*
+----------------------------
+
+* Parses routing hints from payment requests <Hugo Muller-Downing>
 
 Version 0.0.3 *(2026-01-14)*
 ----------------------------
