@@ -19,6 +19,7 @@ package app.cash.lninvoice
 import app.cash.lninvoice.FieldTags.DESCRIPTION
 import app.cash.lninvoice.FieldTags.DESCRIPTION_HASH
 import app.cash.lninvoice.FieldTags.EXPIRY
+import app.cash.lninvoice.FieldTags.EXTRA_ROUTING_INFO
 import app.cash.lninvoice.FieldTags.PAYMENT_HASH
 import app.cash.quiver.extensions.orThrow
 import app.cash.quiver.extensions.toEither
@@ -63,7 +64,6 @@ data class PaymentRequest(
 ) {
 
   private val taggedFieldMap: Map<Int, TaggedField> = taggedFields.associateBy { it.tag }
-
   /** Short description of purpose of payment (UTF-8), e.g. '1 cup of coffee' or 'ナンセンス 1杯' */
   val description: Option<String> by lazy {
     taggedFieldMap[DESCRIPTION.tag].toOption().map { BitReader(it.data).text(it.size) }
@@ -98,6 +98,10 @@ data class PaymentRequest(
       Sha256Hash.wrap(hash.toByteArray()),
       true
     )!!.pubKey.toByteString()
+  }
+
+  val routingInfo: List<RoutingInfo> by lazy {
+    taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
   }
 
   companion object {

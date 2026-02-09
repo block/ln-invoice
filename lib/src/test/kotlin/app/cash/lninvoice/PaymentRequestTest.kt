@@ -20,6 +20,7 @@ import app.cash.lninvoice.Bech32Data.Companion.Encoding.BECH32
 import app.cash.lninvoice.Invoices.pubkeyRecoveryTest
 import app.cash.lninvoice.Invoices.sample
 import app.cash.lninvoice.Invoices.sampleDecoded
+import app.cash.lninvoice.Invoices.sampleWithRoutingInfo
 import app.cash.lninvoice.Invoices.sampleSignet
 import app.cash.lninvoice.Invoices.sampleWithDescriptionAndDescriptionHash
 import app.cash.lninvoice.Invoices.sampleWithPaymentHash
@@ -34,13 +35,11 @@ import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
-import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.startWith
 import io.kotest.matchers.throwable.haveCauseOfType
 import io.kotest.matchers.throwable.haveMessage
 import okio.ByteString.Companion.decodeHex
 import okio.ByteString.Companion.toByteString
-import java.security.MessageDigest
 import java.time.Instant
 
 class PaymentRequestTest : StringSpec({
@@ -106,6 +105,29 @@ class PaymentRequestTest : StringSpec({
   "a valid invoice should have a payee node public key with large ECDSA signature values" {
     PaymentRequest.parse(signatureOverflowTest).shouldBeRight()
       .payeeNodePublicKey shouldBe "037cc5f9f1da20ac0d60e83989729a204a33cc2d8e80438969fadf35c1c5f1233b".decodeHex()
+  }
+
+  "a valid invoice with routing info" {
+    PaymentRequest.parse(sampleWithRoutingInfo).shouldBeRight().should { invoice ->
+      invoice.routingInfo.size shouldBe 1
+      invoice.routingInfo[0].hops.size shouldBe 2
+
+      invoice.routingInfo[0].hops[0].should { hop ->
+        hop.pubkey.hex() shouldBe "029e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
+        hop.shortChannelId shouldBe ShortChannelId(66051, 263430, 1800)
+        hop.feeBaseMsat shouldBe 1
+        hop.feeProportionalMillionths shouldBe 20
+        hop.cltvExpiryDelta shouldBe 3
+      }
+
+      invoice.routingInfo[0].hops[1].should { hop ->
+        hop.pubkey.hex() shouldBe "039e03a901b85534ff1e92c43c74431f7ce72046060fcf7a95c37e148f78c77255"
+        hop.shortChannelId shouldBe ShortChannelId(197637, 395016, 2314)
+        hop.feeBaseMsat shouldBe 2
+        hop.feeProportionalMillionths shouldBe 30
+        hop.cltvExpiryDelta shouldBe 4
+      }
+    }
   }
 
   "if the invoice does not have a valid checksum, then it must fail to parse" {

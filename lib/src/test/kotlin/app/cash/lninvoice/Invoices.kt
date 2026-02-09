@@ -80,6 +80,14 @@ object Invoices {
     "d376f5lpcf4vrq050fmuptnvczzaudds0ptcj8v2gq3skxvlz8kn0h8m9vf8j3yzgqnlq2pqgds3huxts8s2hc" +
     "r7seyuwj9g0t0cpg3mn4f"
 
+  const val sampleWithRoutingInfo = "lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg" +
+    "3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4z" +
+    "wqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85fr9yq20q82gphp2nflc7jt" +
+    "zrcazrra7wwgzxqc8u7754cdlpfrmccae92qgzqvzq2ps8pqqqqqqpqqqqq9qqqvpeuqafqxu92d8lr6fvg0r5" +
+    "gv0heeeqgcrqlnm6jhphu9y00rrhy4grqszsvpcgpy9qqqqqqgqqqqq7qqzq9qrsgqdfjcdk6w3ak5pca9hwfw" +
+    "fh63zrrz06wwfya0ydlzpgzxkn5xagsqz7x9j4jwe7yj7vaf2k9lqsdk45kts2fd0fkr28am0u4w95tt2nsq76" +
+    "cqw0"
+
 
   val sampleDecoded: Bech32Data by lazy { sample.toBech32Data().orThrow() }
 }
