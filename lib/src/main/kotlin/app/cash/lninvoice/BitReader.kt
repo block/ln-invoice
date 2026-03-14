@@ -90,12 +90,18 @@ class BitReader(
     return byteString(bits - bits % 8).string(Charsets.UTF_8)
   }
 
-  /** Parse a number of `bytes` bytes and returns a set of ints indicating which bits in that number are set */
-  internal fun bits(bytes: Int): Set<Int> {
-    val bi = BigInteger.valueOf(long(bytes))
-    return (0..bi.bitLength()).fold(emptySet()) { acc, i ->
-      if (bi.testBit(i)) acc + i else acc
+  /**
+   * Reads [wordCount] 5-bit words, combines them into a single number (MSB first),
+   * and returns the set of bit positions that are set.
+   *
+   * For example, words [16, 8, 0] combine to binary 10000_01000_00000,
+   * which has bits 8 and 14 set (var_onion_optin + payment_secret).
+   */
+  internal fun bits(wordCount: Int): Set<Int> {
+    val value = bytes(wordCount).toByteArray().fold(BigInteger.ZERO) { acc, word ->
+      acc.shiftLeft(5).add(BigInteger.valueOf(word.toLong() and 0x1FL))
     }
+    return (0..value.bitLength()).filter { value.testBit(it) }.toSet()
   }
 
   companion object {

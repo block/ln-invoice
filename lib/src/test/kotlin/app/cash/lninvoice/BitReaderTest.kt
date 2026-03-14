@@ -74,6 +74,19 @@ class BitReaderTest : StringSpec({
     reader.byteString(24).string(Charsets.UTF_8) shouldBe "123"
   }
 
+  "bits parses small word counts" {
+    // 3 words: [16, 8, 0] -> binary 10000_01000_00000 -> bits 8 and 14 set
+    val data = byteArrayOf(16, 8, 0).toByteString()
+    BitReader(data).bits(3) shouldBe setOf(8, 14)
+  }
+
+  "bits handles word counts exceeding 64 bits" {
+    // 14 words (70 bits) with bit 65 set: word 0 = 1 (bit 65), rest zeros
+    val words = ByteArray(14)
+    words[0] = 1 // sets bit ((14 - 1) * 5) = bit 65
+    BitReader(words.toByteString()).bits(14) shouldBe setOf(65)
+  }
+
   "testing off-by-one bit padding when reading uneven bits" {
     // Given two 5-bit bytes: 11111 00000
     // Combine them:  1111100000

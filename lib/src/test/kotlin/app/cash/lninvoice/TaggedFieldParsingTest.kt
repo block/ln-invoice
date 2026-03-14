@@ -63,4 +63,19 @@ class TaggedFieldParsingTest : StringSpec({
     PaymentRequest.parse(encoded = Invoices.sampleWithUnknownTags, strict = true)
       .shouldBeLeft().message shouldBe "Tagged field has unknown tag(s) [10]"
   }
+
+  "an invoice with only known optional features should parse in strict mode" {
+    PaymentRequest.parse(encoded = Invoices.sample, strict = true)
+      .shouldBeRight()
+  }
+
+  "an invoice with unknown required features should not parse" {
+    PaymentRequest.parse(encoded = Invoices.sampleWithUnknownRequiredFeature)
+      .shouldBeLeft().message shouldBe "Invoice requires unknown feature(s) [50]"
+  }
+
+  "an invoice with known required invoice features should parse" {
+    PaymentRequest.parse(encoded = Invoices.sampleWithKnownRequiredInvoiceFeature)
+      .shouldBeRight()
+  }
 })

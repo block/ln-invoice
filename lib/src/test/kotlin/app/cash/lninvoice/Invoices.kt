@@ -17,8 +17,12 @@
 package app.cash.lninvoice
 
 import app.cash.quiver.extensions.orThrow
+import okio.ByteString.Companion.toByteString
 
 object Invoices {
+
+  private const val SAMPLE_FEATURE_FIELD_WORD_COUNT = 20
+  private const val SAMPLE_FEATURE_FIELD_DATA_START = 143
 
   const val sample = "lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq" +
     "5vdhkven9v5sxyetpdeessp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q5sqqqqqq" +
@@ -90,4 +94,25 @@ object Invoices {
 
 
   val sampleDecoded: Bech32Data by lazy { sample.toBech32Data().orThrow() }
+
+  /**
+   * Derived from [sample] with feature bit 50 set (an unknown required/even feature).
+   */
+  val sampleWithUnknownRequiredFeature: String by lazy {
+    sampleWithAdditionalFeatureBits(50)
+  }
+
+  val sampleWithKnownRequiredInvoiceFeature: String by lazy {
+    sampleWithAdditionalFeatureBits(36)
+  }
+
+  private fun sampleWithAdditionalFeatureBits(vararg bits: Int): String {
+    val payload = sampleDecoded.payload.toByteArray().clone()
+    bits.forEach { bit ->
+      require(bit in 0 until SAMPLE_FEATURE_FIELD_WORD_COUNT * 5) { "feature bit out of range: $bit" }
+      val wordIndex = SAMPLE_FEATURE_FIELD_DATA_START + SAMPLE_FEATURE_FIELD_WORD_COUNT - 1 - (bit / 5)
+      payload[wordIndex] = (payload[wordIndex].toInt() or (1 shl (bit % 5))).toByte()
+    }
+    return Bech32Data(Bech32Data.Companion.Encoding.BECH32, "lnbc25m", payload.toByteString()).encoded
+  }
 }

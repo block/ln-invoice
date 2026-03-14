@@ -20,6 +20,7 @@ import app.cash.lninvoice.FieldTags.DESCRIPTION
 import app.cash.lninvoice.FieldTags.DESCRIPTION_HASH
 import app.cash.lninvoice.FieldTags.EXPIRY
 import app.cash.lninvoice.FieldTags.EXTRA_ROUTING_INFO
+import app.cash.lninvoice.FieldTags.FEATURE_BITS
 import app.cash.lninvoice.FieldTags.PAYMENT_HASH
 import app.cash.quiver.extensions.orThrow
 import app.cash.quiver.extensions.toEither
@@ -107,6 +108,14 @@ data class PaymentRequest(
   companion object {
 
     private const val SIGNATURE_BYTE_SIZE = 104
+    private val KNOWN_INVOICE_FEATURE_BITS: Set<Int> = setOf(
+      8, 9,   // var_onion_optin
+      14, 15, // payment_secret
+      16, 17, // basic_mpp
+      24, 25, // option_route_blinding
+      36, 37, // option_attribution_data
+      48, 49, // option_payment_metadata
+    )
     private val HrpRegex = Regex("ln([a-z]+)(([0-9]*)([munp])?)?(.*)")
 
     /** Parse an encoded invoice into a PaymentRequest. */
@@ -197,13 +206,28 @@ data class PaymentRequest(
 
     private fun validateTaggedFields(
       taggedFields: List<TaggedField>,
-      strict: Boolean
+      strict: Boolean,
     ): Either<InvalidInvoice, List<TaggedField>> {
       val unknown: Set<Int> by lazy { taggedFields.map { it.tag }.toSet().minus(FieldTags.validTags().toSet()) }
       return if (strict && unknown.isNotEmpty()) {
         InvalidInvoice("Tagged field has unknown tag(s) [${unknown.joinToString(",")}]").left()
       } else {
-        taggedFields.right()
+        validateFeatureBits(taggedFields).map { taggedFields }
+      }
+    }
+
+    private fun validateFeatureBits(
+      taggedFields: List<TaggedField>,
+    ): Either<InvalidInvoice, Unit> {
+      val featureField = taggedFields.find { it.tag == FEATURE_BITS.tag } ?: return Unit.right()
+      val setBits = BitReader(featureField.data).bits(featureField.size)
+      val unknownRequired = setBits.filter { it % 2 == 0 && it !in KNOWN_INVOICE_FEATURE_BITS }
+      return if (unknownRequired.isNotEmpty()) {
+        InvalidInvoice(
+          "Invoice requires unknown feature(s) [${unknownRequired.sorted().joinToString(",")}]"
+        ).left()
+      } else {
+        Unit.right()
       }
     }
 
