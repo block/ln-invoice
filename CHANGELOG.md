@@ -1,8 +1,10 @@
 Change Log
 ==========
 
-Next release
+Version 0.0.5 *(2026-03-14)*
 ----------------------------
+
+* Reject invoices with unknown required feature bits <Ryan Loomba>
 
 Version 0.0.4 *(2026-02-10)*
 ----------------------------
