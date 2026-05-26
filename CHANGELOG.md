@@ -1,6 +1,12 @@
 Change Log
 ==========
 
+Version 0.0.6 *(2026-05-26)*
+----------------------------
+
+* Supports regtest payment requests <Lauren Shareshian>
+* Fixes broken Maven Central badge in README <Jem Mawson>
+
 Version 0.0.5 *(2026-03-14)*
 ----------------------------
 
