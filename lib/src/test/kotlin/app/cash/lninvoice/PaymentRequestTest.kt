@@ -20,6 +20,7 @@ import app.cash.lninvoice.Bech32Data.Companion.Encoding.BECH32
 import app.cash.lninvoice.Invoices.pubkeyRecoveryTest
 import app.cash.lninvoice.Invoices.sample
 import app.cash.lninvoice.Invoices.sampleDecoded
+import app.cash.lninvoice.Invoices.sampleRegtest
 import app.cash.lninvoice.Invoices.sampleWithRoutingInfo
 import app.cash.lninvoice.Invoices.sampleSignet
 import app.cash.lninvoice.Invoices.sampleWithDescriptionAndDescriptionHash
@@ -86,6 +87,14 @@ class PaymentRequestTest : StringSpec({
     val invoice = PaymentRequest.parse(sampleSignet).shouldBeRight()
     invoice.network shouldBe Network.SIG
     invoice.payeeNodePublicKey.hex().shouldBe("02d37dd04cd27c141708e883e622583792e59de8c93c24c13e5df31fd6aa942102")
+  }
+
+  "parsing succeeds for regtest" {
+    PaymentRequest.parse(sampleRegtest).shouldBeRight().should { invoice ->
+      invoice.network shouldBe Network.REGTEST
+      invoice.amount shouldBeSome BitcoinAmount(1_000)
+      invoice.description shouldBeSome "tacos"
+    }
   }
 
   "a valid invoice should have a payment hash" {
