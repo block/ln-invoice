@@ -84,6 +84,12 @@ object Invoices {
     "d376f5lpcf4vrq050fmuptnvczzaudds0ptcj8v2gq3skxvlz8kn0h8m9vf8j3yzgqnlq2pqgds3huxts8s2hc" +
     "r7seyuwj9g0t0cpg3mn4f"
 
+  const val sampleRegtest = "lnbcrt10u1p4ptn0xpp5yw23cn9kq4hx79mm3p0eh9trc0xstwgegprcwuj0ms23gnlg2mg" +
+    "qsp58eh6sznrnm0420yw85l5sa4qwy0t8pq266s0x4cuhyy4enfm649qxqrrssnp4qtlyk6hxw5h4hrdfdkd4n" +
+    "h2rv0mwyyqvdtakr3dv6m4vvsmfshvg6rzjqgp0s738klwqef7yr8yu54vv3wfuk4psv46x5laf6l6v5x4lww" +
+    "ahvqqqqrusum7gtyqqqqqqqqqqqqqq9qcqzpudqgw3skxmmn9qyyssq7k20xzgpszwcwemm8rw6n37c34c2cl" +
+    "w4585aecq7tes8kt2zd6zxv6dse554crhzj4wdrwurjc3ndyfxspmkmfc75wm2cdu892gdwvqp47tqu9"
+
   const val sampleWithRoutingInfo = "lnbc20m1pvjluezsp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg" +
     "3zygspp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqhp58yjmdan79s6qqdhdzgynm4z" +
     "wqd5d7xmw5fk98klysy043l2ahrqsfpp3qjmp7lwpagxun9pygexvgpjdc4jdj85fr9yq20q82gphp2nflc7jt" +
