@@ -10,9 +10,19 @@ repositories {
 
 java {
   toolchain {
-    languageVersion.set(JavaLanguageVersion.of(11))
+    languageVersion.set(JavaLanguageVersion.of(17))
   }
   withSourcesJar()
+}
+
+tasks.withType<JavaCompile>().configureEach {
+  options.release.set(11)
+}
+
+kotlin {
+  compilerOptions {
+    freeCompilerArgs.add("-Xjdk-release=11")
+  }
 }
 
 mavenPublishing {
