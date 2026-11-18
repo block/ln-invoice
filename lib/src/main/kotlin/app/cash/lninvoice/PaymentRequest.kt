@@ -278,13 +278,22 @@ data class PaymentRequest(
     private fun validateTaggedFields(
       taggedFields: List<TaggedField>,
       strict: Boolean,
-    ): Either<InvalidInvoice, List<TaggedField>> {
-      val unknown: Set<Int> by lazy { taggedFields.map { it.tag }.toSet().minus(FieldTags.validTags().toSet()) }
-      return if (strict && unknown.isNotEmpty()) {
-        InvalidInvoice("Tagged field has unknown tag(s) [${unknown.joinToString(",")}]").left()
-      } else {
-        validateFeatureBits(taggedFields).map { taggedFields }
+    ): Either<InvalidInvoice, List<TaggedField>> = either {
+      ensure(taggedFields.count { it.tag == PAYMENT_HASH.tag } == 1) {
+        InvalidInvoice("Invoice must include exactly one payment hash")
       }
+      ensure(taggedFields.count { it.tag == SECRET.tag } == 1) {
+        InvalidInvoice("Invoice must include exactly one payment secret")
+      }
+      ensure(taggedFields.count { it.tag == DESCRIPTION.tag || it.tag == DESCRIPTION_HASH.tag } == 1) {
+        InvalidInvoice("Invoice must include exactly one description or description hash")
+      }
+      val unknown: Set<Int> by lazy { taggedFields.map { it.tag }.toSet().minus(FieldTags.validTags().toSet()) }
+      ensure(!strict || unknown.isEmpty()) {
+        InvalidInvoice("Tagged field has unknown tag(s) [${unknown.joinToString(",")}]")
+      }
+      validateFeatureBits(taggedFields).bind()
+      taggedFields
     }
 
     private fun validateFeatureBits(

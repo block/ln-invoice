@@ -95,17 +95,82 @@ class PaymentRequestMalformedInputTest : StringSpec({
       val invalidSizes = if (tag == FieldTags.PAYEE_NODE) listOf(0, 1, 52, 54) else listOf(0, 1, 51, 53)
       invalidSizes.forEach { size ->
         val malformed = field(tag, size)
-        val validFields = sampleFields + descriptionHash
+        val validFields = if (tag == FieldTags.DESCRIPTION_HASH) {
+          sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionHash
+        } else {
+          sampleFields
+        }
+        PaymentRequest.parse(invoice(validFields)).shouldBeRight()
         listOf(listOf(malformed) + validFields, validFields + malformed).forEach { fields ->
-          PaymentRequest.parse(invoice(fields)).shouldBeLeft()
+          PaymentRequest.parse(invoice(fields)).shouldBeLeft().message shouldBe
+            "Invalid tagged field length. [tag=${tag.tag}][size=$size][expected=${if (tag == FieldTags.PAYEE_NODE) 53 else 52}]"
         }
       }
     }
   }
 
+  "payment hashes and secrets must each occur exactly once in either parsing mode" {
+    listOf(FieldTags.PAYMENT_HASH, FieldTags.SECRET).forEach { tag ->
+      val original = sampleFields.first { it.tag == tag.tag }
+      val without = sampleFields.filterNot { it.tag == tag.tag }
+      val replacements = listOf(emptyList(), listOf(original, original), listOf(original, field(tag, 52)))
+      replacements.forEach { fields ->
+        listOf(fields + without, without + fields).forEach { ordered ->
+          listOf(false, true).forEach { strict ->
+            PaymentRequest.parse(invoice(ordered), strict).shouldBeLeft()
+          }
+        }
+      }
+    }
+  }
+
+  "exactly one description or description hash is required" {
+    val without = sampleFields.filterNot {
+      it.tag == FieldTags.DESCRIPTION.tag || it.tag == FieldTags.DESCRIPTION_HASH.tag
+    }
+    val description = sampleFields.first { it.tag == FieldTags.DESCRIPTION.tag }
+    val descriptionHash = field(FieldTags.DESCRIPTION_HASH, 52)
+    listOf(false, true).forEach { strict ->
+      listOf(listOf(description), listOf(descriptionHash)).forEach { fields ->
+        PaymentRequest.parse(invoice(without + fields), strict).shouldBeRight()
+      }
+      listOf(emptyList(), listOf(description, descriptionHash), listOf(descriptionHash, description),
+        listOf(description, description), listOf(descriptionHash, descriptionHash)).forEach { fields ->
+        PaymentRequest.parse(invoice(without + fields), strict).shouldBeLeft()
+      }
+    }
+  }
+
+  "descriptions reject BOLT1 prohibited Unicode code points" {
+    val prohibited = listOf(0x0000, 0x0009, 0x000A, 0x000D, 0x001F, 0x007F, 0x009F,
+      0x00AD, 0x061C, 0x200D, 0xFEFF, 0xE000, 0xF8FF, 0xF0000, 0x10FFFD, 0x2028, 0x2029)
+    prohibited.forEach { codePoint ->
+      val character = String(Character.toChars(codePoint))
+      listOf(character, "a${character}b").forEach { text ->
+        val fields = sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionField(text)
+        listOf(false, true).forEach { strict ->
+          PaymentRequest.parse(invoice(fields), strict).shouldBeLeft()
+        }
+      }
+    }
+  }
+
+  "descriptions preserve allowed Unicode including supplementary and unassigned code points" {
+    listOf("", "coffee beans", "ナンセンス 1杯", "café e\u0301", "⚡️ 😀", String(Character.toChars(0x10400)), "\u0378").forEach { text ->
+      val fields = sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionField(text)
+      PaymentRequest.parse(invoice(fields)).shouldBeRight().description shouldBeSome text
+    }
+  }
+
+  "prohibited Unicode descriptions fail when copying" {
+    val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
+    val fields = sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionField("\u200D")
+    shouldThrow<IllegalArgumentException> { request.copy(taggedFields = fields) }
+  }
+
   "invalid UTF-8 descriptions fail during safe parsing" {
     val badUtf8 = TaggedField(FieldTags.DESCRIPTION.tag, 2, byteArrayOf(31, 28).toByteString())
-    PaymentRequest.parse(invoice(sampleFields + badUtf8)).shouldBeLeft()
+    PaymentRequest.parse(invoice(sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + badUtf8)).shouldBeLeft()
   }
 
   "expiry accepts Long MAX and leading zero words without wrapping" {
@@ -265,6 +330,11 @@ private val sampleSignature: ByteString =
   BitReader(sampleDecoded.payload.substring(sampleDecoded.payload.size - 104)).byteString(520)
 
 private fun field(tag: FieldTags, size: Int) = TaggedField(tag.tag, size, ByteArray(size).toByteString())
+
+private fun descriptionField(text: String): TaggedField {
+  val words = text.encodeUtf8().toWords()
+  return TaggedField(FieldTags.DESCRIPTION.tag, words.size, words)
+}
 
 private fun dataWords(fields: List<TaggedField>): ByteString = (
   sampleDecoded.payload.substring(0, 7).toByteArray() + fields.flatMap {
