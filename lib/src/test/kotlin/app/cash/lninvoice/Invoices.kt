@@ -60,16 +60,10 @@ object Invoices {
     "fr6twf5rlcx42v9x9pq3upsl0m24z2gtkwmkzcwehx2rcqrdgs5540lz8m0lhs3z7t8luva6c5hlg6l5jsw4x" +
     "3lnwuauqvxzmmcqen3gpj7tnq2"
 
-  const val sampleWithUnknownTags = "lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfq" +
-    "qqsyqcyq5rqwzqfqypqdq5vdhkven9v5sxyetpdeessp5zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3" +
-    "zyg3zyg3zygs9q5sqqqqqqqqqqqqqqqqsgq2qrqqqfppnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqppnqqqqq" +
-    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" +
-    "qqqqqqqqqqqqqqqqqhpnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqhp4qqqqqqqqqqq" +
-    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqspnqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" +
-    "qqqqqqqqqqqsp4qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnp5qqqqqqqqqqqqqqq" +
-    "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqnpkqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq" +
-    "qqqqqqqqqz599y53s3ujmcfjp5xrdap68qxymkqphwsexhmhr8wdz5usdzkzrse33chw6dlp3jhuhge9ley7j" +
-    "2ayx36kawe7kmgg8sv5ugdyusdcqzn8z9x"
+  const val sampleWithUnknownTags = "lnbc25m1pvjluezpp5qqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqqqsyqcyq5rqwzqfqypqdq5vdhkven9v5sxyetpdeessp5zyg3" +
+    "zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zyg3zygs9q5sqqqqqqqqqqqqqqqqsgq2qrqqqfppnqqqqqqqqqqqqqqqqqqq" +
+    "qqqqqqqqqqqqqcsenjd934c02h7v9deyju0t43ye2y38nd2h2wr0ykzlqs7v873jkvvg36kfwwmp9lftrn8a3gp4ax52zpvyc7qu" +
+    "ffgjjj7avx7we9zcp3dce9d"
 
   const val sampleWithUnevenBytes = "lnbc820n1p58jmqqdq4ga6kccmgw3jkx6pqf3xyxpp5gz4f05gw6k5sxypgqr" +
     "ap9sp240lwtxe9tqzull4k9mwxuq2n2r5ssp598qjc2nx7xtjx6csk5j7cgh25q2ahwpurcv859dhwj8n2xw4" +

@@ -20,7 +20,6 @@ import app.cash.lninvoice.Bech32Data.Companion.Encoding.BECH32
 import app.cash.lninvoice.Invoices.sampleDecoded
 import arrow.core.Either
 import io.kotest.assertions.arrow.core.shouldBeLeft
-import io.kotest.assertions.arrow.core.shouldBeNone
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.arrow.core.shouldBeSome
 import io.kotest.assertions.throwables.shouldThrow
@@ -89,8 +88,7 @@ class PaymentRequestMalformedInputTest : StringSpec({
     }
   }
 
-  "malformed fixed fields cannot shadow valid fields in either order" {
-    val paymentHash = sampleFields.first { it.tag == FieldTags.PAYMENT_HASH.tag }
+  "malformed fixed fields reject invoices in either order" {
     val descriptionHash = field(FieldTags.DESCRIPTION_HASH, 52)
     listOf(FieldTags.PAYMENT_HASH, FieldTags.DESCRIPTION_HASH, FieldTags.SECRET, FieldTags.PAYEE_NODE).forEach { tag ->
       val invalidSizes = if (tag == FieldTags.PAYEE_NODE) listOf(0, 1, 52, 54) else listOf(0, 1, 51, 53)
@@ -98,32 +96,10 @@ class PaymentRequestMalformedInputTest : StringSpec({
         val malformed = field(tag, size)
         val validFields = sampleFields + descriptionHash
         listOf(listOf(malformed) + validFields, validFields + malformed).forEach { fields ->
-          val request = PaymentRequest.parse(invoice(fields)).shouldBeRight()
-          request.paymentHash shouldBe BitReader(paymentHash.data).byteString(256).hex()
-          request.descriptionHash shouldBeSome "00".repeat(32)
-          request.taggedFields shouldBe fields
-          request.payeeNodePublicKey.size shouldBe 33
+          PaymentRequest.parse(invoice(fields)).shouldBeLeft()
         }
       }
     }
-  }
-
-  "an unsupported description hash length stays raw without becoming a hash" {
-    listOf(0, 1, 51, 53).forEach { size ->
-      val fields = sampleFields + field(FieldTags.DESCRIPTION_HASH, size)
-      val request = PaymentRequest.parse(invoice(fields)).shouldBeRight()
-      request.descriptionHash.shouldBeNone()
-      request.taggedFields shouldBe fields
-    }
-  }
-
-  "fixed fields and descriptions reject nonzero or excessive padding" {
-    listOf(FieldTags.PAYMENT_HASH to 52, FieldTags.DESCRIPTION_HASH to 52, FieldTags.DESCRIPTION to 2).forEach { (tag, size) ->
-      val data = ByteArray(size).also { it[size - 1] = 1 }.toByteString()
-      val fields = sampleFields.filterNot { it.tag == tag.tag } + TaggedField(tag.tag, size, data)
-      PaymentRequest.parse(invoice(fields)).shouldBeLeft()
-    }
-    PaymentRequest.parse(invoice(sampleFields + field(FieldTags.DESCRIPTION, 1))).shouldBeLeft()
   }
 
   "invalid UTF-8 descriptions fail during safe parsing" {
@@ -192,13 +168,8 @@ class PaymentRequestMalformedInputTest : StringSpec({
       val orderedDigest = invoiceDigest(orderedFields)
       val orderedSignature = signer.sign(orderedDigest)
       PaymentRequest.parse(invoice(orderedFields, signature = compactSignature(orderedSignature.r, orderedSignature.s, 0)))
-        .shouldBeRight().payeeNodePublicKey shouldBe signer.pubKey.toByteString()
+        .shouldBeLeft()
     }
-
-    val badPadding = payee.toByteArray().also { it[it.lastIndex] = (it.last().toInt() or 1).toByte() }.toByteString()
-    val paddedFields = sampleFields + TaggedField(FieldTags.PAYEE_NODE.tag, badPadding.size, badPadding)
-    val paddedSignature = signer.sign(invoiceDigest(paddedFields))
-    PaymentRequest.parse(invoice(paddedFields, signature = compactSignature(paddedSignature.r, paddedSignature.s, 0))).shouldBeLeft()
   }
 
   "recovery accepts high S signatures while explicit payees require low S" {

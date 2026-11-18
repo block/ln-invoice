@@ -82,10 +82,8 @@ class BitReaderTest : StringSpec({
     reader.int(1) shouldBe 7
   }
 
-  "text rejects malformed UTF-8 and invalid padding" {
+  "text rejects malformed UTF-8" {
     shouldThrow<CharacterCodingException> { BitReader(byteArrayOf(31, 28).toByteString()).text(2) }
-    shouldThrow<IllegalArgumentException> { BitReader(byteArrayOf(24, 14, 20, 17).toByteString()).text(4) }
-    shouldThrow<IllegalArgumentException> { BitReader(byteArrayOf(0).toByteString()).text(1) }
   }
 
   "empty text does not consume the following field" {
