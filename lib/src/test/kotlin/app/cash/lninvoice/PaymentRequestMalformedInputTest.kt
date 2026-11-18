@@ -35,6 +35,7 @@ import okio.ByteString.Companion.toByteString
 import org.bitcoinj.base.Sha256Hash
 import org.bitcoinj.crypto.ECKey
 import java.math.BigInteger
+import java.nio.charset.CharacterCodingException
 import java.time.Duration
 import java.time.Instant
 
@@ -136,11 +137,48 @@ class PaymentRequestMalformedInputTest : StringSpec({
     }
   }
 
-  "invalid signatures report InvalidInvoice at the throwing getter boundary" {
+  "invalid signatures fail during construction and copying" {
     val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
     val signature = compactSignature(BigInteger.ZERO, BigInteger.ONE, 0)
-    shouldThrow<InvalidInvoice> { request.copy(signature = signature).payeeNodePublicKey }
-    shouldThrow<InvalidInvoice> { request.copy(signature = ByteString.EMPTY).payeeNodePublicKey }
+    shouldThrow<InvalidInvoice> {
+      PaymentRequest(
+        network = request.network,
+        timestamp = request.timestamp,
+        amount = request.amount,
+        paymentHash = request.paymentHash,
+        taggedFields = request.taggedFields,
+        signature = signature,
+        hash = request.hash,
+      )
+    }
+    shouldThrow<InvalidInvoice> { request.copy(signature = signature) }
+    shouldThrow<InvalidInvoice> { request.copy(signature = ByteString.EMPTY) }
+  }
+
+  "invalid UTF-8 descriptions fail when copying" {
+    val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
+    val description = TaggedField(FieldTags.DESCRIPTION.tag, 2, byteArrayOf(31, 28).toByteString())
+    shouldThrow<CharacterCodingException> { request.copy(taggedFields = listOf(description)) }
+  }
+
+  "truncated description hashes fail when copying" {
+    val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
+    shouldThrow<IndexOutOfBoundsException> {
+      request.copy(taggedFields = listOf(field(FieldTags.DESCRIPTION_HASH, 51)))
+    }
+  }
+
+  "expiry overflow fails when copying" {
+    val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
+    val words = unsignedWords(BigInteger.valueOf(Long.MAX_VALUE) + BigInteger.ONE)
+    val expiry = TaggedField(FieldTags.EXPIRY.tag, words.size, words)
+    shouldThrow<ArithmeticException> { request.copy(taggedFields = listOf(expiry)) }
+  }
+
+  "truncated routing data fails when copying" {
+    val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
+    val route = TaggedField(FieldTags.EXTRA_ROUTING_INFO.tag, 82, ByteString.EMPTY)
+    shouldThrow<IndexOutOfBoundsException> { request.copy(taggedFields = listOf(route)) }
   }
 
   "unrecoverable curve points fail during parsing" {

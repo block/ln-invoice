@@ -52,6 +52,8 @@ import java.time.Instant
 
 /**
  * A request for payment, as per [BOLT-11](https://github.com/lightning/bolts/blob/master/11-payment-encoding.md#bolt-11-invoice-protocol-for-lightning-payments)
+ *
+ * Derived properties are decoded and the signature is validated during construction.
  */
 data class PaymentRequest(
   /** In which Bitcoin network this request is valid */
@@ -72,58 +74,52 @@ data class PaymentRequest(
 
   private val taggedFieldMap: Map<Int, TaggedField> = taggedFields.associateBy { it.tag }
   /** Short description of purpose of payment (UTF-8), e.g. '1 cup of coffee' or 'ナンセンス 1杯' */
-  val description: Option<String> by lazy {
+  val description: Option<String> =
     taggedFieldMap[DESCRIPTION.tag].toOption().map { BitReader(it.data).text(it.size) }
-  }
 
   /**
    * SHA2 256-bit hash of the original description.
    * Usually set when the description is too long to store in the invoice itself.
    */
-  val descriptionHash: Option<String> by lazy {
+  val descriptionHash: Option<String> =
     taggedFieldMap[DESCRIPTION_HASH.tag].toOption().map { BitReader(it.data).byteString(256).hex() }
-  }
 
   /** Expiry time as defined in tagged fields. Default is 1 hour if no duration tag is present */
-  val expiry: Duration by lazy {
+  val expiry: Duration =
     taggedFieldMap[EXPIRY.tag].toOption().map {
       val seconds = it.data.toByteArray().fold(BigInteger.ZERO) { acc, word ->
         acc.shiftLeft(5).add(BigInteger.valueOf(word.toLong()))
       }.longValueExact()
       Duration.ofSeconds(seconds)
     }.getOrElse { Duration.ofHours(1) }
-  }
 
   /** Validates the signature and returns the explicit or recovered payee node public key */
-  val payeeNodePublicKey: ByteString by lazy {
-    result {
-      ensure(signature.size == 65) { InvalidInvoice("Signature must contain 65 bytes") }
-      val signatureRecoveryId = signature[64].toUByte().toInt()
-      ensure(signatureRecoveryId in 0..3) { InvalidInvoice("Invalid signature recovery id") }
+  val payeeNodePublicKey: ByteString = result {
+    ensure(signature.size == 65) { InvalidInvoice("Signature must contain 65 bytes") }
+    val signatureRecoveryId = signature[64].toUByte().toInt()
+    ensure(signatureRecoveryId in 0..3) { InvalidInvoice("Invalid signature recovery id") }
 
-      val r = BigInteger(signature.substring(0, 32).hex(), 16)
-      val s = BigInteger(signature.substring(32, 64).hex(), 16)
-      val ellipticCurveSignature = ECKey.ECDSASignature(r, s)
-      val curveOrder = ECKey.ecDomainParameters().n
-      ensure(r.signum() > 0 && r < curveOrder && s.signum() > 0 && s < curveOrder) {
-        InvalidInvoice("Signature scalars are out of range")
-      }
+    val r = BigInteger(signature.substring(0, 32).hex(), 16)
+    val s = BigInteger(signature.substring(32, 64).hex(), 16)
+    val ellipticCurveSignature = ECKey.ECDSASignature(r, s)
+    val curveOrder = ECKey.ecDomainParameters().n
+    ensure(r.signum() > 0 && r < curveOrder && s.signum() > 0 && s < curveOrder) {
+      InvalidInvoice("Signature scalars are out of range")
+    }
 
-      val digest = Sha256Hash.wrap(hash.toByteArray())
-      val payee = taggedFieldMap[PAYEE_NODE.tag]?.let {
-        ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
-        ECKey.fromPublicOnly(BitReader(it.data).byteString(264).toByteArray())
-      } ?: ensureNotNull(ECKey.recoverFromSignature(signatureRecoveryId, ellipticCurveSignature, digest, true)) {
-        InvalidInvoice("Cannot recover payee public key")
-      }
-      ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
-      payee.pubKey.toByteString()
-    }.orThrow()
-  }
+    val digest = Sha256Hash.wrap(hash.toByteArray())
+    val payee = taggedFieldMap[PAYEE_NODE.tag]?.let {
+      ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
+      ECKey.fromPublicOnly(BitReader(it.data).byteString(264).toByteArray())
+    } ?: ensureNotNull(ECKey.recoverFromSignature(signatureRecoveryId, ellipticCurveSignature, digest, true)) {
+      InvalidInvoice("Cannot recover payee public key")
+    }
+    ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
+    payee.pubKey.toByteString()
+  }.orThrow()
 
-  val routingInfo: List<RoutingInfo> by lazy {
+  val routingInfo: List<RoutingInfo> =
     taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
-  }
 
   companion object {
 
@@ -233,14 +229,7 @@ data class PaymentRequest(
           taggedFields = validatedTaggedFields,
           signature = signature,
           hash = hashData(decoded),
-        ).also {
-          // Decode before returning so malformed input cannot fail later in a lazy getter.
-          it.description
-          it.descriptionHash
-          it.expiry
-          it.payeeNodePublicKey
-          it.routingInfo
-        }
+        )
       }.mapLeft { InvalidInvoice("Cannot parse invoice data. [invoice=$encoded]", it) }.bind()
     }
 
