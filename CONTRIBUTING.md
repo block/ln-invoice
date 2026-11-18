@@ -18,6 +18,9 @@ and your CI have the same consistent tooling. Here are the [installation instruc
 by [enabling the shell hooks](https://cashapp.github.io/hermit/usage/shell/) (one-time only, recommended) or manually
 sourcing the env with `. ./bin/activate-hermit`.
 
+Hermit supplies JDK 17 for Gradle and compilation. Java and Kotlin compilation target Java 11 bytecode and APIs,
+so the library remains compatible with Java 11. No separate JDK 11 installation is needed to build.
+
 Use gradle to run all tests
 
 ```shell
