@@ -97,28 +97,48 @@ data class PaymentRequest(
     taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
 
   private fun decodePayeeNodePublicKey(): Result<ByteString> = result {
-    ensure(signature.size == 65) { InvalidInvoice("Signature must contain 65 bytes") }
-    val signatureRecoveryId = signature[64].toUByte().toInt()
-    ensure(signatureRecoveryId in 0..3) { InvalidInvoice("Invalid signature recovery id") }
-
     val ellipticCurveSignature = decodeSignature().bind()
+    val signatureRecoveryId = signature[64].toUByte().toInt()
+    val explicitPayee = taggedFieldMap[PAYEE_NODE.tag]
+    validateSignature(ellipticCurveSignature, signatureRecoveryId, requireLowS = explicitPayee != null).bind()
+
     val digest = Sha256Hash.wrap(hash.toByteArray())
-    val payee = taggedFieldMap[PAYEE_NODE.tag]?.let {
-      ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
+    val payee = explicitPayee?.let {
       decodeExplicitPayee(it).bind()
     } ?: recoverPayee(signatureRecoveryId, ellipticCurveSignature, digest).bind()
-    ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
+    verifySignature(ellipticCurveSignature, digest, payee).bind()
     payee.pubKey.toByteString()
   }
 
   private fun decodeSignature(): Result<ECKey.ECDSASignature> = result {
+    ensure(signature.size == 65) { InvalidInvoice("Signature must contain 65 bytes") }
     val r = BigInteger(signature.substring(0, 32).hex(), 16)
     val s = BigInteger(signature.substring(32, 64).hex(), 16)
+    ECKey.ECDSASignature(r, s)
+  }
+
+  private fun validateSignature(
+    ellipticCurveSignature: ECKey.ECDSASignature,
+    signatureRecoveryId: Int,
+    requireLowS: Boolean,
+  ): Result<Unit> = result {
+    ensure(signatureRecoveryId in 0..3) { InvalidInvoice("Invalid signature recovery id") }
+    val (r, s) = ellipticCurveSignature.r to ellipticCurveSignature.s
     val curveOrder = ECKey.ecDomainParameters().n
     ensure(r.signum() > 0 && r < curveOrder && s.signum() > 0 && s < curveOrder) {
       InvalidInvoice("Signature scalars are out of range")
     }
-    ECKey.ECDSASignature(r, s)
+    if (requireLowS) {
+      ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
+    }
+  }
+
+  private fun verifySignature(
+    ellipticCurveSignature: ECKey.ECDSASignature,
+    digest: Sha256Hash,
+    payee: ECKey,
+  ): Result<Unit> = result {
+    ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
   }
 
   private fun decodeExplicitPayee(field: TaggedField): Result<ECKey> = result {
