@@ -87,9 +87,12 @@ fun PicoBitcoinAmount(picoBtc: Long): BitcoinAmount {
   return BitcoinAmount(sats, pico)
 }
 
-/** Create a BitcoinAmount from the amount in BTC. Amounts below pico are truncated, not rounded. */
+/**
+ * Create a BitcoinAmount from the amount in BTC. Amounts below pico are truncated, not rounded.
+ * @throws ArithmeticException if the satoshi component cannot be represented as a Long.
+ */
 fun BigDecimal.toBitcoinAmount(): BitcoinAmount {
-  val sats = this.multiply(SATS_PER_BTC).toLong()
+  val sats = this.multiply(SATS_PER_BTC).setScale(0, RoundingMode.DOWN).longValueExact()
   val pico = this.multiply(PICO_PER_BTC).remainder(PICO_PER_SAT).toInt()
   return BitcoinAmount(sats, pico)
 }

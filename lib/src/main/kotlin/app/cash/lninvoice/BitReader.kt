@@ -19,6 +19,7 @@ package app.cash.lninvoice
 import okio.ByteString
 import okio.ByteString.Companion.toByteString
 import java.math.BigInteger
+import java.nio.charset.CodingErrorAction
 import java.time.Instant
 
 class BitReader(
@@ -84,10 +85,24 @@ class BitReader(
     return bitList(bits).chunked(8).map { chunk -> Integer.parseInt(chunk, 2).toByte() }.toByteArray().toByteString()
   }
 
-  /** Read `bytes` bytes (concatenating the lower 5 bits of each, as per `byteString`) and convert into UTF_8 text */
+  /** Read a complete field, requiring at most four trailing zero padding bits. */
+  internal fun paddedByteString(bits: Int, wordCount: Int): ByteString {
+    val padding = wordCount * 5 - bits
+    require(padding in 0..4) { "Invalid field padding length" }
+    if (padding > 0) {
+      require(data[byteIndex + wordCount - 1].toInt() and ((1 shl padding) - 1) == 0) { "Nonzero field padding" }
+    }
+    return byteString(bits)
+  }
+
+  /** Read `bytes` 5-bit words as UTF-8 text, rejecting invalid text or field padding. */
   internal fun text(bytes: Int): String {
     val bits = bytes * 5
-    return byteString(bits - bits % 8).string(Charsets.UTF_8)
+    val decoded = paddedByteString(bits - bits % 8, bytes)
+    return Charsets.UTF_8.newDecoder()
+      .onMalformedInput(CodingErrorAction.REPORT)
+      .onUnmappableCharacter(CodingErrorAction.REPORT)
+      .decode(decoded.asByteBuffer()).toString()
   }
 
   /**

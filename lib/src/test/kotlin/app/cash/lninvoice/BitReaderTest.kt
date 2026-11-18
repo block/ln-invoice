@@ -19,11 +19,13 @@ package app.cash.lninvoice
 import app.cash.lninvoice.BitReader.Companion.FIVE_BIT_MASK
 import app.cash.lninvoice.Invoices.sampleWithDescriptionHash
 import app.cash.quiver.extensions.orThrow
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import okio.ByteString
 import okio.ByteString.Companion.decodeHex
 import okio.ByteString.Companion.toByteString
+import java.nio.charset.CharacterCodingException
 
 class BitReaderTest : StringSpec({
 
@@ -72,6 +74,24 @@ class BitReaderTest : StringSpec({
     val data = "lnurl1xyerxdu27jy".toBech32Data().orThrow().payload
     val reader = BitReader(data)
     reader.byteString(24).string(Charsets.UTF_8) shouldBe "123"
+  }
+
+  "text validates UTF-8 and consumes its padding before the next field" {
+    val reader = BitReader(byteArrayOf(24, 14, 20, 16, 7).toByteString())
+    reader.text(4) shouldBe "é"
+    reader.int(1) shouldBe 7
+  }
+
+  "text rejects malformed UTF-8 and invalid padding" {
+    shouldThrow<CharacterCodingException> { BitReader(byteArrayOf(31, 28).toByteString()).text(2) }
+    shouldThrow<IllegalArgumentException> { BitReader(byteArrayOf(24, 14, 20, 17).toByteString()).text(4) }
+    shouldThrow<IllegalArgumentException> { BitReader(byteArrayOf(0).toByteString()).text(1) }
+  }
+
+  "empty text does not consume the following field" {
+    val reader = BitReader(byteArrayOf(7).toByteString())
+    reader.text(0) shouldBe ""
+    reader.int(1) shouldBe 7
   }
 
   "bits parses small word counts" {

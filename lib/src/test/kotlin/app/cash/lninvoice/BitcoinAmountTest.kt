@@ -16,6 +16,7 @@
 
 package app.cash.lninvoice
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
@@ -29,6 +30,18 @@ import java.math.RoundingMode
 import kotlin.math.absoluteValue
 
 class BitcoinAmountTest : StringSpec({
+
+  "BigDecimal conversion preserves the Long satoshi boundaries and truncates sub pico values" {
+    listOf(Long.MIN_VALUE, Long.MAX_VALUE).forEach { sats ->
+      val btc = BigDecimal(sats).movePointLeft(8)
+      btc.toBitcoinAmount() shouldBe BitcoinAmount(sats)
+      val sign = if (sats < 0) -1 else 1
+      btc.add(BigDecimal("0.0000000000019").multiply(BigDecimal(sign))).toBitcoinAmount() shouldBe BitcoinAmount(sats, sign)
+      shouldThrow<ArithmeticException> {
+        btc.add(BigDecimal(sign).movePointLeft(8)).toBitcoinAmount()
+      }
+    }
+  }
 
   "can create bitcoin amount from BigDecimal" {
     checkAll(

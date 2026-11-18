@@ -21,9 +21,13 @@ import app.cash.lninvoice.FieldTags.DESCRIPTION_HASH
 import app.cash.lninvoice.FieldTags.EXPIRY
 import app.cash.lninvoice.FieldTags.EXTRA_ROUTING_INFO
 import app.cash.lninvoice.FieldTags.FEATURE_BITS
+import app.cash.lninvoice.FieldTags.PAYEE_NODE
 import app.cash.lninvoice.FieldTags.PAYMENT_HASH
+import app.cash.lninvoice.FieldTags.SECRET
+import app.cash.quiver.asResult
 import app.cash.quiver.extensions.orThrow
 import app.cash.quiver.extensions.toEither
+import app.cash.quiver.raise.outcome
 import arrow.core.Either
 import arrow.core.None
 import arrow.core.Option
@@ -31,6 +35,8 @@ import arrow.core.flatMap
 import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.raise.either
+import arrow.core.raise.ensure
+import arrow.core.raise.result
 import arrow.core.right
 import arrow.core.some
 import arrow.core.toOption
@@ -39,6 +45,7 @@ import okio.ByteString.Companion.encodeUtf8
 import okio.ByteString.Companion.toByteString
 import org.bitcoinj.base.Sha256Hash
 import org.bitcoinj.crypto.ECKey
+import java.math.BigDecimal
 import java.math.BigInteger
 import java.nio.ByteBuffer
 import java.time.Duration
@@ -64,7 +71,7 @@ data class PaymentRequest(
   val hash: ByteString,
 ) {
 
-  private val taggedFieldMap: Map<Int, TaggedField> = taggedFields.associateBy { it.tag }
+  private val taggedFieldMap: Map<Int, TaggedField> = taggedFields.filter(::hasValidLength).associateBy { it.tag }
   /** Short description of purpose of payment (UTF-8), e.g. '1 cup of coffee' or 'ナンセンス 1杯' */
   val description: Option<String> by lazy {
     taggedFieldMap[DESCRIPTION.tag].toOption().map { BitReader(it.data).text(it.size) }
@@ -75,30 +82,46 @@ data class PaymentRequest(
    * Usually set when the description is too long to store in the invoice itself.
    */
   val descriptionHash: Option<String> by lazy {
-    taggedFieldMap[DESCRIPTION_HASH.tag].toOption().map { BitReader(it.data).byteString(256).hex() }
+    taggedFieldMap[DESCRIPTION_HASH.tag].toOption().map { readPaddedField(it, 256).hex() }
   }
 
   /** Expiry time as defined in tagged fields. Default is 1 hour if no duration tag is present */
   val expiry: Duration by lazy {
     taggedFieldMap[EXPIRY.tag].toOption().map {
-      Duration.ofSeconds(BitReader(it.data).long(it.size))
+      val seconds = it.data.toByteArray().fold(BigInteger.ZERO) { acc, word ->
+        acc.shiftLeft(5).add(BigInteger.valueOf(word.toLong()))
+      }.longValueExact()
+      Duration.ofSeconds(seconds)
     }.getOrElse { Duration.ofHours(1) }
   }
 
-  /** Recovers the payee node public key from the signature */
+  /** Validates the signature and returns the explicit or recovered payee node public key */
   val payeeNodePublicKey: ByteString by lazy {
-    val signatureRecoveryId = signature[64].toUByte().toInt()
+    result {
+      ensure(signature.size == 65) { InvalidInvoice("Signature must contain 65 bytes") }
+      val signatureRecoveryId = signature[64].toUByte().toInt()
+      ensure(signatureRecoveryId in 0..3) { InvalidInvoice("Invalid signature recovery id") }
 
-    val r = BigInteger(signature.substring(0, 32).hex(), 16)
-    val s = BigInteger(signature.substring(32, 64).hex(), 16)
-    val ellipticCurveSignature = ECKey.ECDSASignature(r, s)
+      val r = BigInteger(signature.substring(0, 32).hex(), 16)
+      val s = BigInteger(signature.substring(32, 64).hex(), 16)
+      val ellipticCurveSignature = ECKey.ECDSASignature(r, s)
+      val curveOrder = ECKey.ecDomainParameters().n
+      ensure(r.signum() > 0 && r < curveOrder && s.signum() > 0 && s < curveOrder) {
+        InvalidInvoice("Signature scalars are out of range")
+      }
 
-    ECKey.recoverFromSignature(
-      signatureRecoveryId,
-      ellipticCurveSignature,
-      Sha256Hash.wrap(hash.toByteArray()),
-      true
-    )!!.pubKey.toByteString()
+      val digest = Sha256Hash.wrap(hash.toByteArray())
+      val payee = taggedFieldMap[PAYEE_NODE.tag]?.let {
+        ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
+        ECKey.fromPublicOnly(readPaddedField(it, 264).toByteArray())
+      } ?: outcome<InvalidInvoice, ECKey> {
+        ensureNotNull(ECKey.recoverFromSignature(signatureRecoveryId, ellipticCurveSignature, digest, true))
+      }.asResult {
+        InvalidInvoice("Cannot recover payee public key")
+      }.bind()
+      ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
+      payee.pubKey.toByteString()
+    }.orThrow()
   }
 
   val routingInfo: List<RoutingInfo> by lazy {
@@ -118,12 +141,18 @@ data class PaymentRequest(
     )
     private val HrpRegex = Regex("ln([a-z]+)(([0-9]*)([munp])?)?(.*)")
 
-    /** Parse an encoded invoice into a PaymentRequest. */
+    /**
+     * Parse an encoded invoice into a PaymentRequest, validating all decoded properties.
+     * Unsupported fixed-field lengths remain in [PaymentRequest.taggedFields] but are ignored when decoding known fields.
+     */
     fun parse(encoded: String, strict: Boolean = false): Either<InvalidInvoice, PaymentRequest> = either {
       val decoded = decodeBech32String(encoded)
         .bind()
+      ensure(decoded.encoding == Bech32Data.Companion.Encoding.BECH32) {
+        InvalidInvoice("Invoice must use Bech32 encoding")
+      }
 
-      val hrp = HrpRegex.find(decoded.hrp).toOption().toEither {
+      val hrp = HrpRegex.matchEntire(decoded.hrp).toOption().toEither {
         InvalidInvoice("Cannot parse invoice. Bad HRP. [hrp=${decoded.hrp}]")
       }.flatMap {
         if (it.groupValues.size > 5 && it.groupValues[5].isNotEmpty()) {
@@ -136,16 +165,21 @@ data class PaymentRequest(
       val network = parseNetwork(hrp, encoded)
         .bind()
 
-      val amount: Option<BitcoinAmount> = when (hrp.groupValues[2]) {
-        "" -> None
-        else -> when (hrp.groupValues[4]) {
-          "p" -> PicoBitcoinAmount(hrp.groupValues[3].toLong()).some()
-          "n" -> PicoBitcoinAmount(hrp.groupValues[3].toLong() * 1_000).some()
-          "u" -> BitcoinAmount(hrp.groupValues[3].toLong() * 100).some()
-          "m" -> BitcoinAmount(hrp.groupValues[3].toLong() * 100_000).some()
-          else -> BitcoinAmount(hrp.groupValues[3].toLong() * 100_000_000).some()
+      val amount: Option<BitcoinAmount> = Either.catch {
+        when (hrp.groupValues[2]) {
+          "" -> None
+          else -> {
+            val scale = when (hrp.groupValues[4]) {
+              "p" -> 12
+              "n" -> 9
+              "u" -> 6
+              "m" -> 3
+              else -> 0
+            }
+            BigDecimal(hrp.groupValues[3]).movePointLeft(scale).toBitcoinAmount().some()
+          }
         }
-      }.right().flatMap {
+      }.mapLeft { InvalidInvoice("Invalid or unrepresentable amount. [hrp=${decoded.hrp}]", it) }.flatMap {
         if (it.isSome { a -> a.picoRemainder % 10 != 0 }) {
           InvalidInvoice("Invalid amount. Pico amounts must be a multiple of 10. [hrp=${decoded.hrp}]").left()
         } else {
@@ -174,27 +208,45 @@ data class PaymentRequest(
         )
       }.bind()
 
-      val paymentHash = taggedFields.find { it.tag == PAYMENT_HASH.tag }.toEither {
+      val paymentHashField = taggedFields.find { it.tag == PAYMENT_HASH.tag && hasValidLength(it) }.toEither {
         InvalidInvoice("Invoice did not include a payment hash [invoice=$encoded]")
-      }.map {
-        BitReader(it.data).byteString(256).hex()
       }.bind()
 
       val validatedTaggedFields = validateTaggedFields(taggedFields, strict).bind()
 
-      val sigWords = decoded.payload.substring(decoded.payload.size - SIGNATURE_BYTE_SIZE, decoded.payload.size)
-      val signature = BitReader(sigWords).byteString(520)
+      Either.catch {
+        val sigWords = decoded.payload.substring(decoded.payload.size - SIGNATURE_BYTE_SIZE, decoded.payload.size)
+        val signature = BitReader(sigWords).byteString(520)
 
-      PaymentRequest(
-        network = network,
-        timestamp = timestamp,
-        amount = amount,
-        paymentHash = paymentHash,
-        taggedFields = validatedTaggedFields,
-        signature = signature,
-        hash = hashData(decoded),
-      )
+        PaymentRequest(
+          network = network,
+          timestamp = timestamp,
+          amount = amount,
+          paymentHash = readPaddedField(paymentHashField, 256).hex(),
+          taggedFields = validatedTaggedFields,
+          signature = signature,
+          hash = hashData(decoded),
+        ).also {
+          // Decode before returning so malformed input cannot fail later in a lazy getter.
+          it.description
+          it.descriptionHash
+          it.expiry
+          it.payeeNodePublicKey
+          it.routingInfo
+        }
+      }.mapLeft { InvalidInvoice("Cannot parse invoice data. [invoice=$encoded]", it) }.bind()
     }
+
+    // Preserve historical leniency: unsupported lengths for p/h/s/n remain raw tags,
+    // but cannot shadow usable fixed-size fields. Other tags have no fixed-size check here.
+    private fun hasValidLength(field: TaggedField): Boolean = when (field.tag) {
+      PAYMENT_HASH.tag, DESCRIPTION_HASH.tag, SECRET.tag -> field.size == 52
+      PAYEE_NODE.tag -> field.size == 53
+      else -> true
+    }
+
+    private fun readPaddedField(field: TaggedField, bits: Int): ByteString =
+      BitReader(field.data).paddedByteString(bits, field.size)
 
     private fun parseNetwork(hrp: MatchResult, encoded: String): Either<InvalidInvoice, Network> =
       Network.parse(hrp.groupValues[1])
