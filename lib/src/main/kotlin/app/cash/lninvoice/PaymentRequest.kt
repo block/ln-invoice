@@ -91,32 +91,52 @@ data class PaymentRequest(
     }.getOrElse { Duration.ofHours(1) }
 
   /** Validates the signature and returns the explicit or recovered payee node public key */
-  val payeeNodePublicKey: ByteString = result {
+  val payeeNodePublicKey: ByteString = decodePayeeNodePublicKey().orThrow()
+
+  val routingInfo: List<RoutingInfo> =
+    taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
+
+  private fun decodePayeeNodePublicKey(): Result<ByteString> = result {
     ensure(signature.size == 65) { InvalidInvoice("Signature must contain 65 bytes") }
     val signatureRecoveryId = signature[64].toUByte().toInt()
     ensure(signatureRecoveryId in 0..3) { InvalidInvoice("Invalid signature recovery id") }
 
+    val ellipticCurveSignature = decodeSignature().bind()
+    val digest = Sha256Hash.wrap(hash.toByteArray())
+    val payee = taggedFieldMap[PAYEE_NODE.tag]?.let {
+      decodeExplicitPayee(it, ellipticCurveSignature).bind()
+    } ?: recoverPayee(signatureRecoveryId, ellipticCurveSignature, digest).bind()
+    ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
+    payee.pubKey.toByteString()
+  }
+
+  private fun decodeSignature(): Result<ECKey.ECDSASignature> = result {
     val r = BigInteger(signature.substring(0, 32).hex(), 16)
     val s = BigInteger(signature.substring(32, 64).hex(), 16)
-    val ellipticCurveSignature = ECKey.ECDSASignature(r, s)
     val curveOrder = ECKey.ecDomainParameters().n
     ensure(r.signum() > 0 && r < curveOrder && s.signum() > 0 && s < curveOrder) {
       InvalidInvoice("Signature scalars are out of range")
     }
+    ECKey.ECDSASignature(r, s)
+  }
 
-    val digest = Sha256Hash.wrap(hash.toByteArray())
-    val payee = taggedFieldMap[PAYEE_NODE.tag]?.let {
-      ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
-      ECKey.fromPublicOnly(BitReader(it.data).byteString(264).toByteArray())
-    } ?: ensureNotNull(ECKey.recoverFromSignature(signatureRecoveryId, ellipticCurveSignature, digest, true)) {
+  private fun decodeExplicitPayee(
+    field: TaggedField,
+    ellipticCurveSignature: ECKey.ECDSASignature,
+  ): Result<ECKey> = result {
+    ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
+    ECKey.fromPublicOnly(BitReader(field.data).byteString(264).toByteArray())
+  }
+
+  private fun recoverPayee(
+    signatureRecoveryId: Int,
+    ellipticCurveSignature: ECKey.ECDSASignature,
+    digest: Sha256Hash,
+  ): Result<ECKey> = result {
+    ensureNotNull(ECKey.recoverFromSignature(signatureRecoveryId, ellipticCurveSignature, digest, true)) {
       InvalidInvoice("Cannot recover payee public key")
     }
-    ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
-    payee.pubKey.toByteString()
-  }.orThrow()
-
-  val routingInfo: List<RoutingInfo> =
-    taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
+  }
 
   companion object {
 
