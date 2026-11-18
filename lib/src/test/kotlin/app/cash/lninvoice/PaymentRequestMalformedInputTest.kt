@@ -90,37 +90,39 @@ class PaymentRequestMalformedInputTest : StringSpec({
   }
 
   "malformed fixed fields reject invoices in either order" {
-    val descriptionHash = field(FieldTags.DESCRIPTION_HASH, 52)
-    listOf(FieldTags.PAYMENT_HASH, FieldTags.DESCRIPTION_HASH, FieldTags.SECRET, FieldTags.PAYEE_NODE).forEach { tag ->
-      val invalidSizes = if (tag == FieldTags.PAYEE_NODE) listOf(0, 1, 52, 54) else listOf(0, 1, 51, 53)
-      invalidSizes.forEach { size ->
-        val malformed = field(tag, size)
-        val validFields = if (tag == FieldTags.DESCRIPTION_HASH) {
-          sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionHash
-        } else {
-          sampleFields
-        }
-        PaymentRequest.parse(invoice(validFields)).shouldBeRight()
-        listOf(listOf(malformed) + validFields, validFields + malformed).forEach { fields ->
-          PaymentRequest.parse(invoice(fields)).shouldBeLeft().message shouldBe
-            "Invalid tagged field length. [tag=${tag.tag}][size=$size][expected=${if (tag == FieldTags.PAYEE_NODE) 53 else 52}]"
-        }
+    val malformedFields = listOf(
+      FieldTags.PAYMENT_HASH to listOf(0, 1, 51, 53),
+      FieldTags.DESCRIPTION_HASH to listOf(0, 1, 51, 53),
+      FieldTags.SECRET to listOf(0, 1, 51, 53),
+      FieldTags.PAYEE_NODE to listOf(0, 1, 52, 54),
+    ).flatMap { (tag, sizes) -> sizes.map { field(tag, it) } }
+
+    malformedFields.forEach { malformed ->
+      val validFields = if (malformed.tag == FieldTags.DESCRIPTION_HASH.tag) {
+        sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + field(FieldTags.DESCRIPTION_HASH, 52)
+      } else {
+        sampleFields
       }
+      val expectedSize = if (malformed.tag == FieldTags.PAYEE_NODE.tag) 53 else 52
+      val expectedError = "Invalid tagged field length. [tag=${malformed.tag}][size=${malformed.size}][expected=$expectedSize]"
+
+      PaymentRequest.parse(invoice(validFields)).shouldBeRight()
+      PaymentRequest.parse(invoice(listOf(malformed) + validFields)).shouldBeLeft().message shouldBe expectedError
+      PaymentRequest.parse(invoice(validFields + malformed)).shouldBeLeft().message shouldBe expectedError
     }
   }
 
   "payment hashes and secrets must each occur exactly once in either parsing mode" {
-    listOf(FieldTags.PAYMENT_HASH, FieldTags.SECRET).forEach { tag ->
+    val invalidFields = listOf(FieldTags.PAYMENT_HASH, FieldTags.SECRET).flatMap { tag ->
       val original = sampleFields.first { it.tag == tag.tag }
       val without = sampleFields.filterNot { it.tag == tag.tag }
-      val replacements = listOf(emptyList(), listOf(original, original), listOf(original, field(tag, 52)))
-      replacements.forEach { fields ->
-        listOf(fields + without, without + fields).forEach { ordered ->
-          listOf(false, true).forEach { strict ->
-            PaymentRequest.parse(invoice(ordered), strict).shouldBeLeft()
-          }
-        }
-      }
+      val duplicate = listOf(original, original)
+      val conflicting = listOf(original, field(tag, 52))
+      listOf(without, duplicate + without, without + duplicate, conflicting + without, without + conflicting)
+    }
+
+    invalidFields.forEach { fields ->
+      invoice(fields).shouldFailInBothParsingModes()
     }
   }
 
@@ -130,28 +132,38 @@ class PaymentRequestMalformedInputTest : StringSpec({
     }
     val description = sampleFields.first { it.tag == FieldTags.DESCRIPTION.tag }
     val descriptionHash = field(FieldTags.DESCRIPTION_HASH, 52)
-    listOf(false, true).forEach { strict ->
-      listOf(listOf(description), listOf(descriptionHash)).forEach { fields ->
-        PaymentRequest.parse(invoice(without + fields), strict).shouldBeRight()
-      }
-      listOf(emptyList(), listOf(description, descriptionHash), listOf(descriptionHash, description),
-        listOf(description, description), listOf(descriptionHash, descriptionHash)).forEach { fields ->
-        PaymentRequest.parse(invoice(without + fields), strict).shouldBeLeft()
-      }
+    val validDescriptions = listOf(listOf(description), listOf(descriptionHash))
+    val invalidDescriptions = listOf(
+      emptyList(),
+      listOf(description, descriptionHash),
+      listOf(descriptionHash, description),
+      listOf(description, description),
+      listOf(descriptionHash, descriptionHash),
+    )
+
+    validDescriptions.forEach { fields ->
+      val encoded = invoice(without + fields)
+      PaymentRequest.parse(encoded).shouldBeRight()
+      PaymentRequest.parse(encoded, strict = true).shouldBeRight()
+    }
+    invalidDescriptions.forEach { fields ->
+      invoice(without + fields).shouldFailInBothParsingModes()
     }
   }
 
   "descriptions reject BOLT1 prohibited Unicode code points" {
-    val prohibited = listOf(0x0000, 0x0009, 0x000A, 0x000D, 0x001F, 0x007F, 0x009F,
-      0x00AD, 0x061C, 0x200D, 0xFEFF, 0xE000, 0xF8FF, 0xF0000, 0x10FFFD, 0x2028, 0x2029)
-    prohibited.forEach { codePoint ->
+    val prohibitedCodePoints = listOf(
+      0x0000, 0x0009, 0x000A, 0x000D, 0x001F, 0x007F, 0x009F,
+      0x00AD, 0x061C, 0x200D, 0xFEFF, 0xE000, 0xF8FF, 0xF0000, 0x10FFFD, 0x2028, 0x2029,
+    )
+    val prohibitedDescriptions = prohibitedCodePoints.flatMap { codePoint ->
       val character = String(Character.toChars(codePoint))
-      listOf(character, "a${character}b").forEach { text ->
-        val fields = sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionField(text)
-        listOf(false, true).forEach { strict ->
-          PaymentRequest.parse(invoice(fields), strict).shouldBeLeft()
-        }
-      }
+      listOf(character, "a${character}b")
+    }
+
+    prohibitedDescriptions.forEach { text ->
+      val fields = sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionField(text)
+      invoice(fields).shouldFailInBothParsingModes()
     }
   }
 
@@ -330,6 +342,11 @@ private val sampleSignature: ByteString =
   BitReader(sampleDecoded.payload.substring(sampleDecoded.payload.size - 104)).byteString(520)
 
 private fun field(tag: FieldTags, size: Int) = TaggedField(tag.tag, size, ByteArray(size).toByteString())
+
+private fun String.shouldFailInBothParsingModes() {
+  PaymentRequest.parse(this).shouldBeLeft()
+  PaymentRequest.parse(this, strict = true).shouldBeLeft()
+}
 
 private fun descriptionField(text: String): TaggedField {
   val words = text.encodeUtf8().toWords()
