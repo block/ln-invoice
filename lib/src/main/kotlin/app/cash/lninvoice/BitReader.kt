@@ -51,10 +51,13 @@ class BitReader(
       (acc shl 5) + b
     }
 
-  /** Read a long by parsing `bytes` bytes, taking the lower 5 bits from each and concatenating them */
+  /**
+   * Read a long by parsing `bytes` bytes, taking the lower 5 bits from each and concatenating them.
+   * @throws ArithmeticException if the decoded value cannot be represented as a Long.
+   */
   internal fun long(bytes: Int): Long =
     bytes(bytes).toByteArray().fold(0L) { acc, b ->
-      (acc shl 5) + b
+      Math.addExact(Math.multiplyExact(acc, 32L), b.toLong())
     }
 
   /** Capture the raw bytes */

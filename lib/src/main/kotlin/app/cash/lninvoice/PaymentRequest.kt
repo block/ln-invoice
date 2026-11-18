@@ -87,10 +87,7 @@ data class PaymentRequest(
   /** Expiry time as defined in tagged fields. Default is 1 hour if no duration tag is present */
   val expiry: Duration =
     taggedFieldMap[EXPIRY.tag].toOption().map {
-      val seconds = it.data.toByteArray().fold(BigInteger.ZERO) { acc, word ->
-        acc.shiftLeft(5).add(BigInteger.valueOf(word.toLong()))
-      }.longValueExact()
-      Duration.ofSeconds(seconds)
+      Duration.ofSeconds(BitReader(it.data).long(it.size))
     }.getOrElse { Duration.ofHours(1) }
 
   /** Validates the signature and returns the explicit or recovered payee node public key */

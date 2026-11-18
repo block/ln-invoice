@@ -70,6 +70,20 @@ class BitReaderTest : StringSpec({
     reader.bits(3) shouldBe setOf(8, 14)
   }
 
+  "long preserves Long MAX with leading zeros and consumes exactly the requested words" {
+    val words = byteArrayOf(0, 0, 7) + ByteArray(12) { 31 } + byteArrayOf(9)
+    val reader = BitReader(words.toByteString())
+    reader.long(15) shouldBe Long.MAX_VALUE
+    reader.int(1) shouldBe 9
+    BitReader(ByteString.EMPTY).long(0) shouldBe 0L
+  }
+
+  "long rejects overflow instead of wrapping to a negative or zero value" {
+    listOf(byteArrayOf(8) + ByteArray(12), byteArrayOf(1) + ByteArray(13)).forEach { words ->
+      shouldThrow<ArithmeticException> { BitReader(words.toByteString()).long(words.size) }
+    }
+  }
+
   "testing uneven bytes with padding" {
     val data = "lnurl1xyerxdu27jy".toBech32Data().orThrow().payload
     val reader = BitReader(data)
