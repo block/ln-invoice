@@ -104,7 +104,8 @@ data class PaymentRequest(
     val ellipticCurveSignature = decodeSignature().bind()
     val digest = Sha256Hash.wrap(hash.toByteArray())
     val payee = taggedFieldMap[PAYEE_NODE.tag]?.let {
-      decodeExplicitPayee(it, ellipticCurveSignature).bind()
+      ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
+      decodeExplicitPayee(it).bind()
     } ?: recoverPayee(signatureRecoveryId, ellipticCurveSignature, digest).bind()
     ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
     payee.pubKey.toByteString()
@@ -120,11 +121,7 @@ data class PaymentRequest(
     ECKey.ECDSASignature(r, s)
   }
 
-  private fun decodeExplicitPayee(
-    field: TaggedField,
-    ellipticCurveSignature: ECKey.ECDSASignature,
-  ): Result<ECKey> = result {
-    ensure(ellipticCurveSignature.isCanonical) { InvalidInvoice("Signature must use low S with an explicit payee") }
+  private fun decodeExplicitPayee(field: TaggedField): Result<ECKey> = result {
     ECKey.fromPublicOnly(BitReader(field.data).byteString(264).toByteArray())
   }
 
