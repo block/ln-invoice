@@ -93,6 +93,25 @@ public final class app/cash/lninvoice/FieldTags$Companion {
 	public final fun validTags ()Ljava/util/List;
 }
 
+public final class app/cash/lninvoice/HopHint {
+	public fun <init> (Lokio/ByteString;Lapp/cash/lninvoice/ShortChannelId;IIS)V
+	public final fun component1 ()Lokio/ByteString;
+	public final fun component2 ()Lapp/cash/lninvoice/ShortChannelId;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()S
+	public final fun copy (Lokio/ByteString;Lapp/cash/lninvoice/ShortChannelId;IIS)Lapp/cash/lninvoice/HopHint;
+	public static synthetic fun copy$default (Lapp/cash/lninvoice/HopHint;Lokio/ByteString;Lapp/cash/lninvoice/ShortChannelId;IISILjava/lang/Object;)Lapp/cash/lninvoice/HopHint;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCltvExpiryDelta ()S
+	public final fun getFeeBaseMsat ()I
+	public final fun getFeeProportionalMillionths ()I
+	public final fun getPubkey ()Lokio/ByteString;
+	public final fun getShortChannelId ()Lapp/cash/lninvoice/ShortChannelId;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class app/cash/lninvoice/InvalidChecksum : java/lang/Exception {
 	public fun <init> (I)V
 	public final fun component1 ()I
@@ -121,6 +140,8 @@ public final class app/cash/lninvoice/InvalidInvoice : java/lang/Throwable {
 public final class app/cash/lninvoice/Network : java/lang/Enum {
 	public static final field Companion Lapp/cash/lninvoice/Network$Companion;
 	public static final field MAIN Lapp/cash/lninvoice/Network;
+	public static final field REGTEST Lapp/cash/lninvoice/Network;
+	public static final field SIG Lapp/cash/lninvoice/Network;
 	public static final field TEST Lapp/cash/lninvoice/Network;
 	public static fun getEntries ()Lkotlin/enums/EnumEntries;
 	public static fun valueOf (Ljava/lang/String;)Lapp/cash/lninvoice/Network;
@@ -153,6 +174,7 @@ public final class app/cash/lninvoice/PaymentRequest {
 	public final fun getNetwork ()Lapp/cash/lninvoice/Network;
 	public final fun getPayeeNodePublicKey ()Lokio/ByteString;
 	public final fun getPaymentHash ()Ljava/lang/String;
+	public final fun getRoutingInfo ()Ljava/util/List;
 	public final fun getSignature ()Lokio/ByteString;
 	public final fun getTaggedFields ()Ljava/util/List;
 	public final fun getTimestamp ()Ljava/time/Instant;
@@ -164,6 +186,42 @@ public final class app/cash/lninvoice/PaymentRequest$Companion {
 	public final fun parse (Ljava/lang/String;Z)Larrow/core/Either;
 	public static synthetic fun parse$default (Lapp/cash/lninvoice/PaymentRequest$Companion;Ljava/lang/String;ZILjava/lang/Object;)Larrow/core/Either;
 	public final fun parseUnsafe (Ljava/lang/String;)Lapp/cash/lninvoice/PaymentRequest;
+}
+
+public final class app/cash/lninvoice/RoutingInfo {
+	public static final field Companion Lapp/cash/lninvoice/RoutingInfo$Companion;
+	public fun <init> (Ljava/util/List;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun copy (Ljava/util/List;)Lapp/cash/lninvoice/RoutingInfo;
+	public static synthetic fun copy$default (Lapp/cash/lninvoice/RoutingInfo;Ljava/util/List;ILjava/lang/Object;)Lapp/cash/lninvoice/RoutingInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHops ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/cash/lninvoice/RoutingInfo$Companion {
+	public final fun parse (Lapp/cash/lninvoice/TaggedField;)Lapp/cash/lninvoice/RoutingInfo;
+}
+
+public final class app/cash/lninvoice/ShortChannelId {
+	public static final field Companion Lapp/cash/lninvoice/ShortChannelId$Companion;
+	public fun <init> (III)V
+	public final fun component1 ()I
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun copy (III)Lapp/cash/lninvoice/ShortChannelId;
+	public static synthetic fun copy$default (Lapp/cash/lninvoice/ShortChannelId;IIIILjava/lang/Object;)Lapp/cash/lninvoice/ShortChannelId;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBlockHeight ()I
+	public final fun getOutputIndex ()I
+	public final fun getTxIndex ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/cash/lninvoice/ShortChannelId$Companion {
+	public final fun parse (Lokio/ByteString;)Lapp/cash/lninvoice/ShortChannelId;
 }
 
 public final class app/cash/lninvoice/TaggedField {

@@ -9,7 +9,7 @@ plugins {
   alias(libs.plugins.dokka)
   alias(libs.plugins.versionsGradlePlugin)
   alias(libs.plugins.versionCatalogUpdateGradlePlugin)
-  alias(libs.plugins.kotlinBinaryCompatibilityPlugin) apply false
+  alias(libs.plugins.kotlinBinaryCompatibilityPlugin)
 }
 
 subprojects {
