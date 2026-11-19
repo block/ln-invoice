@@ -87,10 +87,10 @@ data class Bech32Data(
     )
 
     private val parseRegex =
-      Regex("^([!-@\\[-~]{1,83})1([ac-hj-np-z02-9]{6,})|([!-`{-~]{1,83})1([AC-HJ-NP-Z02-9]{6,})\$")
+      Regex("([!-@\\[-~]{1,83})1([ac-hj-np-z02-9]{6,})|([!-`{-~]{1,83})1([AC-HJ-NP-Z02-9]{6,})")
 
     private fun parse(encoded: String): ErrorOr<Pair<String, List<Int>>> =
-      parseRegex.find(encoded)?.groupValues
+      parseRegex.matchEntire(encoded)?.groupValues
         .toEither { IllegalArgumentException("Unparseable format") }
         .flatMap { matchResult ->
           val (hrp, data) =
