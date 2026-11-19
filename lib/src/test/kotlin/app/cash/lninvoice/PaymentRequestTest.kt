@@ -196,11 +196,8 @@ class PaymentRequestTest : StringSpec({
     PaymentRequest.parse(encoded).shouldBeRight().amount shouldBeSome PicoBitcoinAmount(100)
   }
 
-  "parsing succeeds for invoices with both a description and a description hash" {
-    PaymentRequest.parse(sampleWithDescriptionAndDescriptionHash).shouldBeRight() should {
-      it.descriptionHash shouldBeSome "3925b6f67e2c340036ed12093dd44e0368df1b6ea26c53dbe4811f58fd5db8c1"
-      it.description shouldBeSome "Test"
-    }
+  "parsing rejects invoices with both a description and a description hash" {
+    PaymentRequest.parse(sampleWithDescriptionAndDescriptionHash).shouldBeLeft()
   }
 
   "if the amount does not ends with 0 and the multiplier is `p`, then the invoice must fail to parse" {

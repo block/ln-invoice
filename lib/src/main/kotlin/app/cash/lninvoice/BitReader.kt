@@ -51,10 +51,13 @@ class BitReader(
       (acc shl 5) + b
     }
 
-  /** Read a long by parsing `bytes` bytes, taking the lower 5 bits from each and concatenating them */
+  /**
+   * Read a long by parsing `bytes` bytes, taking the lower 5 bits from each and concatenating them.
+   * @throws ArithmeticException if the decoded value cannot be represented as a Long.
+   */
   internal fun long(bytes: Int): Long =
     bytes(bytes).toByteArray().fold(0L) { acc, b ->
-      (acc shl 5) + b
+      Math.addExact(Math.multiplyExact(acc, 32L), b.toLong())
     }
 
   /** Capture the raw bytes */
@@ -84,10 +87,18 @@ class BitReader(
     return bitList(bits).chunked(8).map { chunk -> Integer.parseInt(chunk, 2).toByte() }.toByteArray().toByteString()
   }
 
-  /** Read `bytes` bytes (concatenating the lower 5 bits of each, as per `byteString`) and convert into UTF_8 text */
+  /** Read `bytes` 5-bit words as UTF-8 text, enforcing BOLT1's Unicode character restrictions. */
   internal fun text(bytes: Int): String {
     val bits = bytes * 5
-    return byteString(bits - bits % 8).string(Charsets.UTF_8)
+    val text = byteString(bits - bits % 8).toByteArray().decodeToString(throwOnInvalidSequence = true)
+    require(text.codePoints().noneMatch { codePoint ->
+      when (Character.getType(codePoint)) {
+        Character.CONTROL.toInt(), Character.FORMAT.toInt(), Character.SURROGATE.toInt(),
+        Character.PRIVATE_USE.toInt(), Character.LINE_SEPARATOR.toInt(), Character.PARAGRAPH_SEPARATOR.toInt() -> true
+        else -> false
+      }
+    }) { "Text contains Unicode characters prohibited by BOLT1" }
+    return text
   }
 
   /**
