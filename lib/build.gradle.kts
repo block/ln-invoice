@@ -1,7 +1,7 @@
 plugins {
   id("java-library")
   id("org.jetbrains.kotlin.jvm")
-  id("com.vanniktech.maven.publish") version "0.33.0"
+  alias(libs.plugins.mavenPublish)
 }
 
 repositories {
@@ -26,14 +26,16 @@ kotlin {
 }
 
 mavenPublishing {
-  configure(com.vanniktech.maven.publish.KotlinJvm())
+  configure(com.vanniktech.maven.publish.KotlinJvm(
+    javadocJar = com.vanniktech.maven.publish.JavadocJar.Dokka("dokkaGeneratePublicationHtml"),
+  ))
 }
 
 dependencies {
-  implementation(libs.arrowCore)
+  api(libs.arrowCore)
   implementation(libs.bouncyCastle)
   implementation(libs.bitcoinj)
-  implementation(libs.okio)
+  api(libs.okio)
   implementation(libs.quiver)
   implementation(libs.slf4jApi)
 
@@ -47,5 +49,6 @@ dependencies {
   testImplementation(libs.kotestProperty)
 
   testRuntimeOnly(libs.junitEngine)
+  testRuntimeOnly(libs.junitPlatformLauncher)
   testRuntimeOnly(libs.slf4jSimple)
 }

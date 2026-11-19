@@ -1,3 +1,4 @@
+import org.jetbrains.dokka.gradle.DokkaExtension
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 repositories {
@@ -25,15 +26,16 @@ subprojects {
     useJUnitPlatform()
   }
 
-  // Configure Dokka for each subproject
-  tasks.withType<org.jetbrains.dokka.gradle.DokkaTask>().configureEach {
-    dokkaSourceSets {
-      named("main") {
+  plugins.withId("org.jetbrains.kotlin.jvm") {
+    extensions.configure<DokkaExtension> {
+      moduleName.set(project.name)
+      moduleVersion.set(providers.gradleProperty("VERSION_NAME"))
+      dokkaSourceSets.matching { it.name == "main" }.configureEach {
+        jdkVersion.set(11)
         includes.from("module.md")
-        moduleName.set(project.name)
         sourceLink {
           localDirectory.set(file("src/main/kotlin"))
-          remoteUrl.set(uri("https://github.com/block/ln-invoice/tree/main/${project.name}/src/main/kotlin").toURL())
+          remoteUrl("https://github.com/block/ln-invoice/tree/main/${project.name}/src/main/kotlin")
           remoteLineSuffix.set("#L")
         }
       }
@@ -41,11 +43,16 @@ subprojects {
   }
 }
 
-// Configure Dokka multi-module task
-tasks.dokkaHtmlMultiModule {
-  outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+dependencies {
+  dokka(project(":lib"))
+}
+
+dokka {
   moduleName.set("ln-invoice")
-  moduleVersion.set(project.version.toString())
+  moduleVersion.set(providers.gradleProperty("VERSION_NAME"))
+  dokkaPublications.html {
+    outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+  }
 }
 
 tasks.register("publishToMavenCentral") {
