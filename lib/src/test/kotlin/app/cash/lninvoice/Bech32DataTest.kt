@@ -22,6 +22,7 @@ import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Exhaustive
 import io.kotest.property.checkAll
 import io.kotest.property.exhaustive.collection
@@ -29,7 +30,7 @@ import java.util.Locale
 
 class Bech32DataTest : StringSpec({
 
-  "valid bech32 can serde" {
+  "BIP-173 valid bech32 can serde in either case" {
     checkAll(
       Exhaustive.collection(
         listOf(
@@ -40,7 +41,7 @@ class Bech32DataTest : StringSpec({
           "11qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqc8247j",
           "split1checkupstagehandshakeupstreamerranterredcaperred2y9e3w",
           "?1ezyfcl"
-        )
+        ).flatMap { listOf(it, it.uppercase(Locale.ROOT)) }
       )
     ) { encoded ->
       encoded.toBech32Data().shouldBeRight() should { data ->
@@ -50,7 +51,7 @@ class Bech32DataTest : StringSpec({
     }
   }
 
-  "valid bech32m can serde" {
+  "BIP-350 valid bech32m can serde in either case" {
     checkAll(
       Exhaustive.collection(
         listOf(
@@ -61,7 +62,7 @@ class Bech32DataTest : StringSpec({
           "11llllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllllludsr8",
           "split1checkupstagehandshakeupstreamerranterredcaperredlc445v",
           "?1v759aa"
-        )
+        ).flatMap { listOf(it, it.uppercase(Locale.ROOT)) }
       )
     ) { encoded ->
       encoded.toBech32Data().shouldBeRight() should { data ->
@@ -71,22 +72,74 @@ class Bech32DataTest : StringSpec({
     }
   }
 
-  "invalid bech32(m) cannot parse" {
+  "prefix and suffix junk cannot parse" {
+    checkAll(
+      Exhaustive.collection(listOf("a12uel5l", "A12UEL5L", "a1lqfn3a", "A1LQFN3A")),
+      Exhaustive.collection(listOf("!", " ", "\t", "\n", "\r\n", "\u0000", "\u007f", "\u0080"))
+    ) { encoded, junk ->
+      "$junk$encoded".toBech32Data().shouldBeLeft()
+      "$encoded$junk".toBech32Data().shouldBeLeft()
+    }
+  }
+
+  "mixed case cannot parse" {
+    checkAll(
+      Exhaustive.collection(
+        listOf(
+          "a12UEL5L", "A12uel5l", "a12uel5L", "a12uel5lA", "aA12UEL5L",
+          "a1LQFN3A", "A1lqfn3a", "a1lqfn3A", "a1lqfn3aA", "aA1LQFN3A"
+        )
+      )
+    ) { encoded ->
+      encoded.toBech32Data().shouldBeLeft()
+    }
+  }
+
+  "changed checksums are rejected" {
+    checkAll(Exhaustive.collection(listOf("a12uel5q", "a1lqfn3q"))) { encoded ->
+      encoded.toBech32Data().shouldBeLeft().shouldBeInstanceOf<InvalidChecksum>()
+    }
+  }
+
+  "Lightning invoice payloads longer than 90 characters can serde in either case" {
+    checkAll(Exhaustive.collection(listOf(Invoices.sample, Invoices.sample.uppercase(Locale.ROOT)))) { encoded ->
+      encoded.toBech32Data().shouldBeRight() should { data ->
+        data.encoding shouldBe Encoding.BECH32
+        data.encoded shouldBe Invoices.sample
+      }
+    }
+  }
+
+  "BIP-173 and BIP-350 invalid bech32(m) cannot parse" {
     checkAll(
       Exhaustive.collection(
         listOf(
           " 1nwldj5", // HRP character out of range
-          "${0x7f}1axkwrx", // HRP character out of range
-          "${0x80}1eym55h", // HRP character out of range
+          "\u007f1axkwrx", // HRP character out of range
+          "\u00801eym55h", // HRP character out of range
           "an84characterslonghumanreadablepartthatcontainsthenumber1andtheexcludedcharactersbio1569pvx",
           "pzry9x0s0muk", // No separator character
           "1pzry9x0s0muk", // Empty HRP
           "x1b4n0q5v", // Invalid data character
           "li1dgmt3", // Too short checksum
-          "de1lg7wt${0xff}", // Invalid character in checksum
+          "de1lg7wt\u00ff", // Invalid character in checksum
           "A1G7SGD8", // checksum calculated with uppercase form of HRP
           "10a06t8", // empty HRP
-          "1qzzfhee" // empty HRP
+          "1qzzfhee", // empty HRP
+          " 1xj0phk", // HRP character out of range
+          "\u007f1g6xzxy", // HRP character out of range
+          "\u00801vctc34", // HRP character out of range
+          "an84characterslonghumanreadablepartthatcontainsthetheexcludedcharactersbioandnumber11d6pts4",
+          "qyrz8wqd2c9m", // No separator character
+          "1qyrz8wqd2c9m", // Empty HRP
+          "y1b0jsk6g", // Invalid data character
+          "lt1igcx5c0", // Invalid data character
+          "in1muywd", // Too short checksum
+          "mm1crxm3i", // Invalid character in checksum
+          "au1s5cgom", // Invalid character in checksum
+          "M1VUXWEZ", // checksum calculated with uppercase form of HRP
+          "16plkw9", // empty HRP
+          "1p2gdwpf" // empty HRP
         )
       )
     ) { encoded ->
