@@ -1,6 +1,16 @@
 Change Log
 ==========
 
+Version 0.0.7 *(2026-11-19)*
+----------------------------
+
+* Rejects malformed invoices with missing or duplicate required fields, invalid descriptions, invalid signatures, or malformed tagged fields.
+* Returns eager parsing failures through `Either` and preserves explicit payee keys with the required signature checks.
+* Parses invoice amounts exactly and rejects overflow or amounts below millisatoshi precision.
+* Rejects Bech32 and Bech32m inputs with surrounding junk or mixed-case suffixes.
+* Enforces public API checks during builds and CI.
+* Refreshes dependencies and documentation tooling while retaining Java 11 targets.
+
 Version 0.0.6 *(2026-05-26)*
 ----------------------------
 
