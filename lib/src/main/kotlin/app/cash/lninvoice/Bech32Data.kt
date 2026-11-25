@@ -89,12 +89,8 @@ data class Bech32Data(
     private val parseRegex =
       Regex("([!-@\\[-~]{1,83})1([ac-hj-np-z02-9]{6,})|([!-`{-~]{1,83})1([AC-HJ-NP-Z02-9]{6,})")
 
-    /** The pattern and unanchored match from 0.0.6, which ignore some leading or trailing characters. */
-    private val lenientParseRegex =
-      Regex("^([!-@\\[-~]{1,83})1([ac-hj-np-z02-9]{6,})|([!-`{-~]{1,83})1([AC-HJ-NP-Z02-9]{6,})\$")
-
-    private fun parse(encoded: String, lenient: Boolean): ErrorOr<Pair<String, List<Int>>> =
-      (if (lenient) lenientParseRegex.find(encoded) else parseRegex.matchEntire(encoded))?.groupValues
+    private fun parse(encoded: String): ErrorOr<Pair<String, List<Int>>> =
+      parseRegex.matchEntire(encoded)?.groupValues
         .toEither { IllegalArgumentException("Unparseable format") }
         .flatMap { matchResult ->
           val (hrp, data) =
@@ -108,10 +104,35 @@ data class Bech32Data(
             .map { hrp to it }
         }
 
-    fun decode(encoded: String): ErrorOr<Bech32Data> = decode(encoded, lenient = false)
+    /** The unanchored pattern from 0.0.6, which ignores some characters around the encoded data. */
+    private val lenientParseRegex =
+      Regex("^([!-@\\[-~]{1,83})1([ac-hj-np-z02-9]{6,})|([!-`{-~]{1,83})1([AC-HJ-NP-Z02-9]{6,})\$")
 
-    internal fun decode(encoded: String, lenient: Boolean): ErrorOr<Bech32Data> = either {
-      val (hrp, data) = parse(encoded, lenient).bind()
+    private fun parseLenient(encoded: String): ErrorOr<Pair<String, List<Int>>> =
+      lenientParseRegex.find(encoded)?.groupValues
+        .toEither { IllegalArgumentException("Unparseable format") }
+        .flatMap { matchResult ->
+          val (hrp, data) =
+            if (matchResult[1].isEmpty()) {
+              matchResult[3].lowercase(Locale.ROOT) to matchResult[4]
+            } else {
+              matchResult[1] to matchResult[2]
+            }
+          Either.catch { data.chars().map(decodingCharset::getValue).toList() }
+            .mapLeft { IllegalArgumentException("Invalid character") }
+            .map { hrp to it }
+        }
+
+    /** Decode like [decode], but ignore some characters around the encoded data, as 0.0.6 did. */
+    internal fun decodeLenient(encoded: String): ErrorOr<Bech32Data> = either {
+      val (hrp, data) = parseLenient(encoded).bind()
+      val values = data.map { it.toByte() }.toByteArray()
+      val encoding = verifyChecksum(hrp, values).bind()
+      Bech32Data(encoding, hrp, values.sliceArray(0 until values.size - 6).toByteString())
+    }
+
+    fun decode(encoded: String): ErrorOr<Bech32Data> = either {
+      val (hrp, data) = parse(encoded).bind()
       val values = data.map { it.toByte() }.toByteArray()
       val encoding = verifyChecksum(hrp, values).bind()
       Bech32Data(encoding, hrp, values.sliceArray(0 until values.size - 6).toByteString())

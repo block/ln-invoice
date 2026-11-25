@@ -36,7 +36,6 @@ import okio.ByteString.Companion.toByteString
 import org.bitcoinj.base.Sha256Hash
 import org.bitcoinj.crypto.ECKey
 import java.math.BigInteger
-import java.nio.charset.CharacterCodingException
 import java.time.Duration
 import java.time.Instant
 
@@ -175,12 +174,6 @@ class PaymentRequestMalformedInputTest : StringSpec({
     }
   }
 
-  "prohibited Unicode descriptions fail when copying" {
-    val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
-    val fields = sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + descriptionField("\u200D")
-    shouldThrow<IllegalArgumentException> { request.copy(taggedFields = fields) }
-  }
-
   "invalid UTF-8 descriptions fail during safe parsing" {
     val badUtf8 = TaggedField(FieldTags.DESCRIPTION.tag, 2, byteArrayOf(31, 28).toByteString())
     PaymentRequest.parse(invoice(sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + badUtf8)).shouldBeLeft()
@@ -215,28 +208,21 @@ class PaymentRequestMalformedInputTest : StringSpec({
     }
   }
 
-  "invalid signatures fail during construction and copying" {
+  "invalid signatures fail when the payee key of a constructed or copied request is read" {
     val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
     val signature = compactSignature(BigInteger.ZERO, BigInteger.ONE, 0)
-    shouldThrow<InvalidInvoice> {
-      PaymentRequest(
-        network = request.network,
-        timestamp = request.timestamp,
-        amount = request.amount,
-        paymentHash = request.paymentHash,
-        taggedFields = request.taggedFields,
-        signature = signature,
-        hash = request.hash,
-      )
+    val constructed = PaymentRequest(
+      network = request.network,
+      timestamp = request.timestamp,
+      amount = request.amount,
+      paymentHash = request.paymentHash,
+      taggedFields = request.taggedFields,
+      signature = signature,
+      hash = request.hash,
+    )
+    listOf(constructed, request.copy(signature = signature), request.copy(signature = ByteString.EMPTY)).forEach {
+      shouldThrow<InvalidInvoice> { it.payeeNodePublicKey }
     }
-    shouldThrow<InvalidInvoice> { request.copy(signature = signature) }
-    shouldThrow<InvalidInvoice> { request.copy(signature = ByteString.EMPTY) }
-  }
-
-  "invalid UTF-8 descriptions fail when copying" {
-    val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
-    val description = TaggedField(FieldTags.DESCRIPTION.tag, 2, byteArrayOf(31, 28).toByteString())
-    shouldThrow<CharacterCodingException> { request.copy(taggedFields = listOf(description)) }
   }
 
   "truncated description hashes fail when copying" {
@@ -373,7 +359,6 @@ class PaymentRequestMalformedInputTest : StringSpec({
       val request = PaymentRequest.parseLenient(encoded).shouldBeRight()
       request.description shouldBeSome "coffee beans"
       shouldThrow<InvalidInvoice> { request.payeeNodePublicKey }
-      shouldThrow<InvalidInvoice> { request.copy() }
     }
   }
 

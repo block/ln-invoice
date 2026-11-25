@@ -53,8 +53,8 @@ import java.time.Instant
 /**
  * A request for payment, as per [BOLT-11](https://github.com/lightning/bolts/blob/master/11-payment-encoding.md#bolt-11-invoice-protocol-for-lightning-payments)
  *
- * Derived properties are decoded and the signature is validated during construction, except for requests returned by
- * [parseLenient].
+ * Derived properties are decoded during construction. [parse] also validates the signature and the description's BOLT1
+ * text rules; for requests built any other way, reading [payeeNodePublicKey] validates the signature.
  */
 data class PaymentRequest(
   /** In which Bitcoin network this request is valid */
@@ -73,12 +73,13 @@ data class PaymentRequest(
   val hash: ByteString,
 ) {
 
-  private val lenient: Boolean = lenientConstruction.get() == true
-
   private val taggedFieldMap: Map<Int, TaggedField> = taggedFields.associateBy { it.tag }
-  /** Short description of purpose of payment (UTF-8), e.g. '1 cup of coffee' or 'ナンセンス 1杯' */
+  /**
+   * Short description of purpose of payment (UTF-8), e.g. '1 cup of coffee' or 'ナンセンス 1杯'.
+   * Invalid UTF-8 is decoded with replacement characters; [parse] rejects it.
+   */
   val description: Option<String> =
-    taggedFieldMap[DESCRIPTION.tag].toOption().map { BitReader(it.data).text(it.size, restricted = !lenient) }
+    taggedFieldMap[DESCRIPTION.tag].toOption().map { BitReader(it.data).textLenient(it.size) }
 
   /**
    * SHA2 256-bit hash of the original description.
@@ -95,13 +96,9 @@ data class PaymentRequest(
 
   /**
    * Validates the signature and returns the explicit or recovered payee node public key.
-   * @throws InvalidInvoice if the signature is invalid, which only requests from [parseLenient] can have.
+   * @throws InvalidInvoice if the signature is invalid, which requests from [parse] never have.
    */
   val payeeNodePublicKey: ByteString by lazy { decodePayeeNodePublicKey().orThrow() }
-
-  init {
-    if (!lenient) payeeNodePublicKey
-  }
 
   val routingInfo: List<RoutingInfo> =
     taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
@@ -177,43 +174,18 @@ data class PaymentRequest(
       48, 49, // option_payment_metadata
     )
     private val HrpRegex = Regex("ln([a-z]+)(([0-9]*)([munp])?)?(.*)")
-    // Tells the constructor to skip eager validation without a constructor parameter, which would change the data
-    // class's constructor, copy, and componentN API.
-    private val lenientConstruction = ThreadLocal<Boolean>()
 
     /**
      * Parse an encoded invoice into a PaymentRequest, validating all decoded properties.
      */
-    fun parse(encoded: String, strict: Boolean = false): Either<InvalidInvoice, PaymentRequest> =
-      parse(encoded, strict, lenient = false)
-
-    /**
-     * Parse an invoice that [parse] in version 0.0.6 accepted, such as one read back from storage.
-     *
-     * This does not follow BOLT-11, and it does not validate the signature. It accepts invoices that BOLT-11 requires
-     * readers to reject, so use [parse] to accept new invoices and use this only for invoices stored earlier.
-     *
-     * This skips checks added in 0.0.7. The invoice may use Bech32m or have characters around it, repeat the payment
-     * hash, lack or repeat the payment secret or description, or have tagged fields of unexpected length. A description
-     * that is not valid BOLT1 text is decoded with replacement characters. Reading
-     * [payeeNodePublicKey] validates the signature and throws [InvalidInvoice] when it is invalid.
-     *
-     * A payment hash is still required, and the checksum, network, exact amount, timestamp, required feature bits,
-     * description hash, expiry, and routing info are still validated. Copies of the returned request are validated as
-     * usual.
-     */
-    fun parseLenient(encoded: String): Either<InvalidInvoice, PaymentRequest> =
-      parse(encoded, strict = false, lenient = true)
-
-    private fun parse(encoded: String, strict: Boolean, lenient: Boolean): Either<InvalidInvoice, PaymentRequest> = either {
-      val decoded = decodeBech32String(encoded, lenient)
+    fun parse(encoded: String, strict: Boolean = false): Either<InvalidInvoice, PaymentRequest> = either {
+      val decoded = decodeBech32String(encoded)
         .bind()
-      ensure(lenient || decoded.encoding == Bech32Data.Companion.Encoding.BECH32) {
+      ensure(decoded.encoding == Bech32Data.Companion.Encoding.BECH32) {
         InvalidInvoice("Invoice must use Bech32 encoding")
       }
 
-      val hrpMatch = if (lenient) HrpRegex.find(decoded.hrp) else HrpRegex.matchEntire(decoded.hrp)
-      val hrp = hrpMatch.toOption().toEither {
+      val hrp = HrpRegex.matchEntire(decoded.hrp).toOption().toEither {
         InvalidInvoice("Cannot parse invoice. Bad HRP. [hrp=${decoded.hrp}]")
       }.flatMap {
         if (it.groupValues.size > 5 && it.groupValues[5].isNotEmpty()) {
@@ -269,7 +241,7 @@ data class PaymentRequest(
         )
       }.bind()
 
-      if (!lenient) taggedFields.forEach { field ->
+      taggedFields.forEach { field ->
         val expectedSize = when (field.tag) {
           PAYMENT_HASH.tag, DESCRIPTION_HASH.tag, SECRET.tag -> 52
           PAYEE_NODE.tag -> 53
@@ -284,31 +256,23 @@ data class PaymentRequest(
         InvalidInvoice("Invoice did not include a payment hash [invoice=$encoded]")
       }.bind()
 
-      val validatedTaggedFields = if (lenient) {
-        validateFeatureBits(taggedFields).map { taggedFields }.bind()
-      } else {
-        validateTaggedFields(taggedFields, strict).bind()
-      }
+      val validatedTaggedFields = validateTaggedFields(taggedFields, strict).bind()
 
       Either.catch {
         val sigWords = decoded.payload.substring(decoded.payload.size - SIGNATURE_BYTE_SIZE, decoded.payload.size)
         val signature = BitReader(sigWords).byteString(520)
 
-        val paymentHash = BitReader(paymentHashField.data).byteString(256).hex()
-
-        if (lenient) lenientConstruction.set(true)
-        try {
-          PaymentRequest(
-            network = network,
-            timestamp = timestamp,
-            amount = amount,
-            paymentHash = paymentHash,
-            taggedFields = validatedTaggedFields,
-            signature = signature,
-            hash = hashData(decoded),
-          )
-        } finally {
-          lenientConstruction.remove()
+        PaymentRequest(
+          network = network,
+          timestamp = timestamp,
+          amount = amount,
+          paymentHash = BitReader(paymentHashField.data).byteString(256).hex(),
+          taggedFields = validatedTaggedFields,
+          signature = signature,
+          hash = hashData(decoded),
+        ).also { request ->
+          validatedTaggedFields.find { it.tag == DESCRIPTION.tag }?.let { BitReader(it.data).text(it.size) }
+          request.payeeNodePublicKey
         }
       }.mapLeft { InvalidInvoice("Cannot parse invoice data. [invoice=$encoded]", it) }.bind()
     }
@@ -317,8 +281,107 @@ data class PaymentRequest(
       Network.parse(hrp.groupValues[1])
         .mapLeft { InvalidInvoice("Invalid network. [invoice=$encoded]", it) }
 
-    private fun decodeBech32String(encoded: String, lenient: Boolean): Either<InvalidInvoice, Bech32Data> =
-      Bech32Data.decode(encoded, lenient)
+    private fun decodeBech32String(encoded: String): Either<InvalidInvoice, Bech32Data> =
+      encoded.toBech32Data()
+        .mapLeft { InvalidInvoice("Failed to bech32 decode [invoice=$encoded]", it) }
+
+    /**
+     * Parse an invoice that [parse] in version 0.0.6 accepted, such as one read back from storage.
+     *
+     * This does not follow BOLT-11, and it does not validate the signature. It accepts invoices that BOLT-11 requires
+     * readers to reject, so use [parse] to accept new invoices and use this only for invoices stored earlier.
+     *
+     * This skips checks added in 0.0.7. The invoice may use Bech32m or have characters around it, repeat the payment
+     * hash, lack or repeat the payment secret or description, or have tagged fields of unexpected length. A description
+     * that is not valid BOLT1 text is decoded with replacement characters. Reading [payeeNodePublicKey] validates the
+     * signature and throws [InvalidInvoice] when it is invalid.
+     *
+     * A payment hash is still required, and the checksum, network, exact amount, timestamp, required feature bits,
+     * description hash, expiry, and routing info are still validated.
+     */
+    fun parseLenient(encoded: String): Either<InvalidInvoice, PaymentRequest> = either {
+      val decoded = decodeBech32StringLenient(encoded)
+        .bind()
+      val hrp = HrpRegex.find(decoded.hrp).toOption().toEither {
+        InvalidInvoice("Cannot parse invoice. Bad HRP. [hrp=${decoded.hrp}]")
+      }.flatMap {
+        if (it.groupValues.size > 5 && it.groupValues[5].isNotEmpty()) {
+          InvalidInvoice("Unexpected suffix in HRP. [hrp=${decoded.hrp}][suffix=${it.groupValues[5]}]").left()
+        } else {
+          it.right()
+        }
+      }.bind()
+
+      val network = parseNetwork(hrp, encoded)
+        .bind()
+
+      val amount: Option<BitcoinAmount> = Either.catch {
+        when (hrp.groupValues[2]) {
+          "" -> None
+          else -> {
+            val scale = when (hrp.groupValues[4]) {
+              "p" -> 12
+              "n" -> 9
+              "u" -> 6
+              "m" -> 3
+              else -> 0
+            }
+            BigDecimal(hrp.groupValues[3]).movePointLeft(scale).toBitcoinAmount().some()
+          }
+        }
+      }.mapLeft { InvalidInvoice("Invalid or unrepresentable amount. [hrp=${decoded.hrp}]", it) }.flatMap {
+        if (it.isSome { a -> a.picoRemainder % 10 != 0 }) {
+          InvalidInvoice("Invalid amount. Pico amounts must be a multiple of 10. [hrp=${decoded.hrp}]").left()
+        } else {
+          it.right()
+        }
+      }.bind()
+
+      val reader = Either.catch {
+        BitReader(decoded.payload.substring(0, decoded.payload.size - SIGNATURE_BYTE_SIZE))
+      }.mapLeft { InvalidInvoice("Invoice too short [invoice=$encoded]", it) }
+        .bind()
+
+      val timestamp: Instant = Either.catch { reader.timestamp(7) }.mapLeft {
+        InvalidInvoice(
+          "Cannot parse timestamp from data. " +
+            "[invoice=$encoded][data=${decoded.payload.hex()}]",
+          it
+        )
+      }.bind()
+
+      val taggedFields = Either.catch { reader.taggedFields() }.mapLeft {
+        InvalidInvoice(
+          "Cannot parse tagged fields from data. " +
+            "[invoice=$encoded][data=${decoded.payload.hex()}]",
+          it
+        )
+      }.bind()
+
+      val paymentHashField = taggedFields.find { it.tag == PAYMENT_HASH.tag }.toEither {
+        InvalidInvoice("Invoice did not include a payment hash [invoice=$encoded]")
+      }.bind()
+
+      validateFeatureBits(taggedFields).bind()
+
+      Either.catch {
+        val sigWords = decoded.payload.substring(decoded.payload.size - SIGNATURE_BYTE_SIZE, decoded.payload.size)
+        val signature = BitReader(sigWords).byteString(520)
+
+        PaymentRequest(
+          network = network,
+          timestamp = timestamp,
+          amount = amount,
+          paymentHash = BitReader(paymentHashField.data).byteString(256).hex(),
+          taggedFields = taggedFields,
+          signature = signature,
+          hash = hashData(decoded),
+        )
+      }.mapLeft { InvalidInvoice("Cannot parse invoice data. [invoice=$encoded]", it) }.bind()
+    }
+
+    private fun decodeBech32StringLenient(encoded: String): Either<InvalidInvoice, Bech32Data> =
+      Bech32Data.decodeLenient(encoded)
         .mapLeft { InvalidInvoice("Failed to bech32 decode [invoice=$encoded]", it) }
 
     private fun validateTaggedFields(
