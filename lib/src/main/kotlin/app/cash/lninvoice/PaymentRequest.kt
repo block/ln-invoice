@@ -53,8 +53,8 @@ import java.time.Instant
 /**
  * A request for payment, as per [BOLT-11](https://github.com/lightning/bolts/blob/master/11-payment-encoding.md#bolt-11-invoice-protocol-for-lightning-payments)
  *
- * Derived properties are decoded during construction. [parse] also validates the signature and the description's BOLT1
- * text rules; for requests built any other way, reading [payeeNodePublicKey] validates the signature.
+ * Derived properties are decoded during construction or on first read. [parse] decodes and validates all of them,
+ * including the signature and the description's BOLT1 text rules.
  */
 data class PaymentRequest(
   /** In which Bitcoin network this request is valid */
@@ -85,20 +85,39 @@ data class PaymentRequest(
    * SHA2 256-bit hash of the original description.
    * Usually set when the description is too long to store in the invoice itself.
    */
-  val descriptionHash: Option<String> =
+  val descriptionHash: Option<String> by lazy {
     taggedFieldMap[DESCRIPTION_HASH.tag].toOption().map { BitReader(it.data).byteString(256).hex() }
+  }
 
-  /** Expiry time as defined in tagged fields. Default is 1 hour if no duration tag is present */
-  val expiry: Duration =
+  /**
+   * Expiry time as defined in tagged fields. Default is 1 hour if no duration tag is present.
+   * @throws ArithmeticException if the expiry overflows, which requests from [parse] never have.
+   */
+  val expiry: Duration by lazy {
     taggedFieldMap[EXPIRY.tag].toOption().map {
       Duration.ofSeconds(BitReader(it.data).long(it.size))
     }.getOrElse { Duration.ofHours(1) }
+  }
 
   /**
    * Validates the signature and returns the explicit or recovered payee node public key.
    * @throws InvalidInvoice if the signature is invalid, which requests from [parse] never have.
    */
-  val payeeNodePublicKey: ByteString by lazy { decodePayeeNodePublicKey().orThrow() }
+  val payeeNodePublicKey: ByteString by lazy {
+    decodePayeeNodePublicKey().getOrElse { throw it as? InvalidInvoice ?: InvalidInvoice("Invalid payee node public key", it) }
+  }
+
+  /**
+   * Returns [payeeNodePublicKey] when the signature is valid. Otherwise, returns the key recovered from the signature
+   * without validating it and ignoring any explicit payee field, as 0.0.6 did. Use this only with [parseLenient].
+   * @throws InvalidInvoice if no key can be recovered from the signature.
+   */
+  val payeeNodePublicKeyLenient: ByteString by lazy {
+    result { payeeNodePublicKey }.getOrElse {
+      recoverPayeeNodePublicKeyLenient()
+        .getOrElse { throw it as? InvalidInvoice ?: InvalidInvoice("Cannot recover payee public key", it) }
+    }
+  }
 
   val routingInfo: List<RoutingInfo> =
     taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
@@ -115,6 +134,12 @@ data class PaymentRequest(
     } ?: recoverPayee(signatureRecoveryId, ellipticCurveSignature, digest).bind()
     verifySignature(ellipticCurveSignature, digest, payee).bind()
     payee.pubKey.toByteString()
+  }
+
+  private fun recoverPayeeNodePublicKeyLenient(): Result<ByteString> = result {
+    val ellipticCurveSignature = decodeSignature().bind()
+    val digest = Sha256Hash.wrap(hash.toByteArray())
+    recoverPayee(signature[64].toUByte().toInt(), ellipticCurveSignature, digest).bind().pubKey.toByteString()
   }
 
   private fun decodeSignature(): Result<ECKey.ECDSASignature> = result {
@@ -271,10 +296,12 @@ data class PaymentRequest(
           signature = signature,
           hash = hashData(decoded),
         ).also { request ->
-          // The constructor decodes descriptions leniently and validates the signature lazily so that parseLenient
-          // can build requests. Strict decoding and reading the payee key throw here instead, which the surrounding
+          // The constructor decodes descriptions leniently and the other properties lazily so that parseLenient can
+          // build requests. Strict decoding and reading the properties throw here instead, which the surrounding
           // Either.catch turns into InvalidInvoice.
           validatedTaggedFields.find { it.tag == DESCRIPTION.tag }?.let { BitReader(it.data).text(it.size) }
+          request.descriptionHash
+          request.expiry
           request.payeeNodePublicKey
         }
       }.mapLeft { InvalidInvoice("Cannot parse invoice data. [invoice=$encoded]", it) }.bind()
@@ -296,11 +323,12 @@ data class PaymentRequest(
      *
      * This skips checks added in 0.0.7. The invoice may use Bech32m or have characters around it, repeat the payment
      * hash, lack or repeat the payment secret or description, or have tagged fields of unexpected length. A description
-     * that is not valid BOLT1 text is decoded with replacement characters. Reading [payeeNodePublicKey] validates the
-     * signature and throws [InvalidInvoice] when it is invalid.
+     * that is not valid BOLT1 text is decoded with replacement characters. As in 0.0.6, a malformed description hash
+     * or an overflowing expiry only throws when [descriptionHash] or [expiry] is read. [payeeNodePublicKey] throws
+     * [InvalidInvoice] when the signature is invalid; [payeeNodePublicKeyLenient] returns the key 0.0.6 recovered.
      *
-     * A payment hash is still required, and the checksum, network, exact amount, timestamp, required feature bits,
-     * description hash, expiry, and routing info are still validated.
+     * A payment hash is still required, and the checksum, network, exact amount, timestamp, required feature bits, and
+     * routing info are still validated.
      */
     fun parseLenient(encoded: String): Either<InvalidInvoice, PaymentRequest> = either {
       val decoded = decodeBech32StringLenient(encoded)

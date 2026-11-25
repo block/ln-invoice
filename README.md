@@ -38,10 +38,15 @@ accepted but that later versions reject, so that invoices already stored before 
 Use `parse` for every invoice you have not yet accepted, and `parseLenient` only for invoices you stored earlier.
 
 `parseLenient` does not validate the signature. Reading `payeeNodePublicKey` checks it and throws `InvalidInvoice` when
-it is invalid. It also accepts invoices that BOLT-11 requires readers to reject: ones without a payment secret, without
-a description or description hash, or with repeated or wrongly sized fields. It accepts Bech32m, characters around the
-invoice, and descriptions that are not valid BOLT-1 text. It still rejects a bad checksum, an unknown network, a missing
-payment hash, an invalid amount or expiry, and unknown required feature bits.
+it is invalid. `payeeNodePublicKeyLenient` instead falls back to the key recovered from the signature, ignoring any
+explicit payee field, as 0.0.6 did. It returns a key that may not have signed the invoice, so use it only for invoices
+read with `parseLenient`.
+
+`parseLenient` also accepts invoices that BOLT-11 requires readers to reject: ones without a payment secret, without a
+description or description hash, or with repeated or wrongly sized fields. It accepts Bech32m, characters around the
+invoice, and descriptions that are not valid BOLT-1 text. As in 0.0.6, a malformed description hash or an overflowing
+expiry throws only when `descriptionHash` or `expiry` is read. It still rejects a bad checksum, an unknown network, a
+missing payment hash, an invalid amount, and unknown required feature bits.
 
 ```kotlin
 val stored: ErrorOr<PaymentRequest> = PaymentRequest.parse(encoded).recover { PaymentRequest.parseLenient(encoded).bind() }

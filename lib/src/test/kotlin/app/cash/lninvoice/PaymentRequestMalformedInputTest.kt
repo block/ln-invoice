@@ -225,18 +225,18 @@ class PaymentRequestMalformedInputTest : StringSpec({
     }
   }
 
-  "truncated description hashes fail when copying" {
+  "truncated description hashes fail when read from a copy" {
     val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
-    shouldThrow<IndexOutOfBoundsException> {
-      request.copy(taggedFields = listOf(field(FieldTags.DESCRIPTION_HASH, 51)))
-    }
+    val copy = request.copy(taggedFields = listOf(field(FieldTags.DESCRIPTION_HASH, 51)))
+    shouldThrow<IndexOutOfBoundsException> { copy.descriptionHash }
   }
 
-  "expiry overflow fails when copying" {
+  "expiry overflow fails when read from a copy" {
     val request = PaymentRequest.parse(Invoices.sample).shouldBeRight()
     val words = unsignedWords(BigInteger.valueOf(Long.MAX_VALUE) + BigInteger.ONE)
     val expiry = TaggedField(FieldTags.EXPIRY.tag, words.size, words)
-    shouldThrow<ArithmeticException> { request.copy(taggedFields = listOf(expiry)) }
+    val copy = request.copy(taggedFields = listOf(expiry))
+    shouldThrow<ArithmeticException> { copy.expiry }
   }
 
   "truncated routing data fails when copying" {
@@ -359,13 +359,13 @@ class PaymentRequestMalformedInputTest : StringSpec({
       val request = PaymentRequest.parseLenient(encoded).shouldBeRight()
       request.description shouldBeSome "coffee beans"
       shouldThrow<InvalidInvoice> { request.payeeNodePublicKey }
+      shouldThrow<InvalidInvoice> { request.payeeNodePublicKeyLenient }
     }
   }
 
   "lenient parsing still rejects invoices whose decoded values would be wrong" {
     val unknownRequiredFeature = sampleFields.filterNot { it.tag == FieldTags.FEATURE_BITS.tag } +
       TaggedField(FieldTags.FEATURE_BITS.tag, 1, byteArrayOf(4).toByteString())
-    val expiryWords = unsignedWords(BigInteger.valueOf(Long.MAX_VALUE) + BigInteger.ONE)
     val checksumMismatch = invoice().let { it.dropLast(1) + if (it.last() == 'q') 'p' else 'q' }
     listOf(
       checksumMismatch,
@@ -373,9 +373,73 @@ class PaymentRequestMalformedInputTest : StringSpec({
       invoice(hrp = "lnbc${"9".repeat(60)}0"),
       invoice(hrp = "lnbc1p"),
       invoice(unknownRequiredFeature),
-      invoice(sampleFields + TaggedField(FieldTags.EXPIRY.tag, expiryWords.size, expiryWords)),
-      invoice(sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + field(FieldTags.DESCRIPTION_HASH, 51)),
     ).forEach { PaymentRequest.parseLenient(it).shouldBeLeft() }
+  }
+
+  "lenient parsing defers malformed description hashes and overflowing expiries to their properties" {
+    val expiryWords = unsignedWords(BigInteger.valueOf(Long.MAX_VALUE) + BigInteger.ONE)
+    val overflowingExpiry = invoice(sampleFields + TaggedField(FieldTags.EXPIRY.tag, expiryWords.size, expiryWords))
+    val shortDescriptionHash =
+      invoice(sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + field(FieldTags.DESCRIPTION_HASH, 51))
+
+    PaymentRequest.parse(overflowingExpiry).shouldBeLeft()
+    shouldThrow<ArithmeticException> { PaymentRequest.parseLenient(overflowingExpiry).shouldBeRight().expiry }
+    PaymentRequest.parse(shortDescriptionHash).shouldBeLeft()
+    shouldThrow<IndexOutOfBoundsException> {
+      PaymentRequest.parseLenient(shortDescriptionHash).shouldBeRight().descriptionHash
+    }
+  }
+
+  "lenient parsing keeps the first of repeated payment hashes" {
+    val otherHash = TaggedField(FieldTags.PAYMENT_HASH.tag, 52, ByteArray(52) { 31 }.toByteString())
+    val encoded = invoice(sampleFields + otherHash)
+    PaymentRequest.parse(encoded).shouldBeLeft()
+    PaymentRequest.parseLenient(encoded).shouldBeRight()
+      .paymentHash shouldBe "0001020304050607080900010203040506070809000102030405060708090102"
+  }
+
+  "the lenient payee key falls back to the key recovered from the signature, as 0.0.6 did" {
+    val signer = ECKey()
+    val otherPayee = ECKey().pubKey.toByteString().toWords()
+    val explicitPayees = listOf(
+      TaggedField(FieldTags.PAYEE_NODE.tag, otherPayee.size, otherPayee),
+      field(FieldTags.PAYEE_NODE, 52),
+      field(FieldTags.PAYEE_NODE, 53),
+      field(FieldTags.PAYEE_NODE, 0),
+    )
+    explicitPayees.forEach { payee ->
+      val fields = sampleFields + payee
+      val digest = invoiceDigest(fields)
+      val signature = signer.sign(digest)
+      val encoded = invoice(fields, signature = compactSignature(signature.r, signature.s, signer.findRecoveryId(digest, signature).toInt()))
+
+      PaymentRequest.parse(encoded).shouldBeLeft()
+      val request = PaymentRequest.parseLenient(encoded).shouldBeRight()
+      shouldThrow<InvalidInvoice> { request.payeeNodePublicKey }
+      request.payeeNodePublicKeyLenient shouldBe signer.pubKey.toByteString()
+    }
+  }
+
+  "the lenient payee key falls back for high S signatures with an explicit payee" {
+    val signer = ECKey()
+    val payee = signer.pubKey.toByteString().toWords()
+    val fields = sampleFields + TaggedField(FieldTags.PAYEE_NODE.tag, payee.size, payee)
+    val digest = invoiceDigest(fields)
+    val low = signer.sign(digest)
+    val high = ECKey.ECDSASignature(low.r, ECKey.ecDomainParameters().n - low.s)
+    val request = PaymentRequest.parseLenient(
+      invoice(fields, signature = compactSignature(high.r, high.s, signer.findRecoveryId(digest, high).toInt()))
+    ).shouldBeRight()
+
+    shouldThrow<InvalidInvoice> { request.payeeNodePublicKey }
+    request.payeeNodePublicKeyLenient shouldBe signer.pubKey.toByteString()
+  }
+
+  "the lenient payee key matches the validated key for valid invoices" {
+    listOf(Invoices.sample, Invoices.sampleWithRoutingInfo).forEach {
+      val request = PaymentRequest.parse(it).shouldBeRight()
+      request.payeeNodePublicKeyLenient shouldBe request.payeeNodePublicKey
+    }
   }
 
   "mutated checksummed invoices never throw from parse or successful getters" {
