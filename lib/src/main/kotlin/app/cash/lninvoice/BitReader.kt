@@ -87,9 +87,13 @@ class BitReader(
     return bitList(bits).chunked(8).map { chunk -> Integer.parseInt(chunk, 2).toByte() }.toByteArray().toByteString()
   }
 
-  /** Read `bytes` 5-bit words as UTF-8 text, enforcing BOLT1's Unicode character restrictions. */
-  internal fun text(bytes: Int): String {
+  /**
+   * Read `bytes` 5-bit words as UTF-8 text, enforcing BOLT1's Unicode character restrictions.
+   * When not [restricted], invalid UTF-8 is replaced and any code point is allowed.
+   */
+  internal fun text(bytes: Int, restricted: Boolean = true): String {
     val bits = bytes * 5
+    if (!restricted) return byteString(bits - bits % 8).string(Charsets.UTF_8)
     val text = byteString(bits - bits % 8).toByteArray().decodeToString(throwOnInvalidSequence = true)
     require(text.codePoints().noneMatch { codePoint ->
       when (Character.getType(codePoint)) {

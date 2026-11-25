@@ -24,6 +24,7 @@ import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.arrow.core.shouldBeSome
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
+import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.int
@@ -316,6 +317,80 @@ class PaymentRequestMalformedInputTest : StringSpec({
     val payload = sampleDecoded.payload.toByteArray().also { words -> (0 until 7).forEach { words[it] = 31 } }.toByteString()
     PaymentRequest.parse(Bech32Data(BECH32, "lnbc25m", payload).encoded).shouldBeRight()
       .timestamp shouldBe Instant.ofEpochSecond((1L shl 35) - 1)
+  }
+
+  "lenient parsing returns the same request as parse for valid invoices" {
+    listOf(Invoices.sample, Invoices.sampleWithDescriptionHash, Invoices.sampleWithRoutingInfo).forEach { encoded ->
+      val strict = PaymentRequest.parse(encoded).shouldBeRight()
+      val lenient = PaymentRequest.parseLenient(encoded).shouldBeRight()
+      lenient shouldBe strict
+      lenient.description shouldBe strict.description
+      lenient.payeeNodePublicKey shouldBe strict.payeeNodePublicKey
+      lenient.routingInfo shouldBe strict.routingInfo
+    }
+  }
+
+  "lenient parsing accepts invoices that 0.0.6 accepted and 0.0.7 rejects" {
+    val withoutSecret = sampleFields.filterNot { it.tag == FieldTags.SECRET.tag }
+    val withoutDescription = sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag }
+    val shortSecret = withoutSecret + field(FieldTags.SECRET, 51)
+    val invalidUtf8 = withoutDescription + TaggedField(FieldTags.DESCRIPTION.tag, 2, byteArrayOf(31, 28).toByteString())
+    val encodings = listOf(
+      invoice(withoutSecret),
+      invoice(withoutDescription),
+      invoice(sampleFields + sampleFields.first { it.tag == FieldTags.SECRET.tag }),
+      invoice(shortSecret),
+      invoice(withoutDescription + descriptionField("a\u200Db")),
+      invoice(hrp = "xlnbc25m"),
+      invoice() + "\n",
+      " " + invoice().uppercase(),
+      Bech32Data(Bech32Data.Companion.Encoding.BECH32M, "lnbc25m", sampleDecoded.payload).encoded,
+    )
+
+    encodings.forEach { encoded ->
+      PaymentRequest.parse(encoded).shouldBeLeft()
+      PaymentRequest.parseLenient(encoded).shouldBeRight().should {
+        it.network shouldBe Network.MAIN
+        it.amount shouldBeSome BitcoinAmount(2_500_000)
+        it.paymentHash shouldBe "0001020304050607080900010203040506070809000102030405060708090102"
+      }
+    }
+    PaymentRequest.parseLenient(invoice(withoutDescription + descriptionField("a\u200Db"))).shouldBeRight()
+      .description shouldBeSome "a\u200Db"
+    PaymentRequest.parse(invoice(invalidUtf8)).shouldBeLeft()
+    PaymentRequest.parseLenient(invoice(invalidUtf8)).shouldBeRight().description shouldBeSome "\uFFFD"
+  }
+
+  "lenient parsing defers invalid signatures to the payee key" {
+    val invalidSignatures = listOf(
+      compactSignature(ECKey.ecDomainParameters().n - BigInteger.ONE, BigInteger.ONE, 2),
+      sampleSignature.toByteArray().also { it[64] = 4 }.toByteString(),
+      compactSignature(BigInteger.ZERO, BigInteger.ONE, 0),
+    )
+    invalidSignatures.forEach { signature ->
+      val encoded = invoice(signature = signature)
+      PaymentRequest.parse(encoded).shouldBeLeft()
+      val request = PaymentRequest.parseLenient(encoded).shouldBeRight()
+      request.description shouldBeSome "coffee beans"
+      shouldThrow<InvalidInvoice> { request.payeeNodePublicKey }
+      shouldThrow<InvalidInvoice> { request.copy() }
+    }
+  }
+
+  "lenient parsing still rejects invoices whose decoded values would be wrong" {
+    val unknownRequiredFeature = sampleFields.filterNot { it.tag == FieldTags.FEATURE_BITS.tag } +
+      TaggedField(FieldTags.FEATURE_BITS.tag, 1, byteArrayOf(4).toByteString())
+    val expiryWords = unsignedWords(BigInteger.valueOf(Long.MAX_VALUE) + BigInteger.ONE)
+    val checksumMismatch = invoice().let { it.dropLast(1) + if (it.last() == 'q') 'p' else 'q' }
+    listOf(
+      checksumMismatch,
+      invoice(sampleFields.filterNot { it.tag == FieldTags.PAYMENT_HASH.tag }),
+      invoice(hrp = "lnbc${"9".repeat(60)}0"),
+      invoice(hrp = "lnbc1p"),
+      invoice(unknownRequiredFeature),
+      invoice(sampleFields + TaggedField(FieldTags.EXPIRY.tag, expiryWords.size, expiryWords)),
+      invoice(sampleFields.filterNot { it.tag == FieldTags.DESCRIPTION.tag } + field(FieldTags.DESCRIPTION_HASH, 51)),
+    ).forEach { PaymentRequest.parseLenient(it).shouldBeLeft() }
   }
 
   "mutated checksummed invoices never throw from parse or successful getters" {

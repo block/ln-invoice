@@ -89,8 +89,12 @@ data class Bech32Data(
     private val parseRegex =
       Regex("([!-@\\[-~]{1,83})1([ac-hj-np-z02-9]{6,})|([!-`{-~]{1,83})1([AC-HJ-NP-Z02-9]{6,})")
 
-    private fun parse(encoded: String): ErrorOr<Pair<String, List<Int>>> =
-      parseRegex.matchEntire(encoded)?.groupValues
+    /** The pattern and unanchored match from 0.0.6, which ignore some leading or trailing characters. */
+    private val lenientParseRegex =
+      Regex("^([!-@\\[-~]{1,83})1([ac-hj-np-z02-9]{6,})|([!-`{-~]{1,83})1([AC-HJ-NP-Z02-9]{6,})\$")
+
+    private fun parse(encoded: String, lenient: Boolean): ErrorOr<Pair<String, List<Int>>> =
+      (if (lenient) lenientParseRegex.find(encoded) else parseRegex.matchEntire(encoded))?.groupValues
         .toEither { IllegalArgumentException("Unparseable format") }
         .flatMap { matchResult ->
           val (hrp, data) =
@@ -104,8 +108,10 @@ data class Bech32Data(
             .map { hrp to it }
         }
 
-    fun decode(encoded: String): ErrorOr<Bech32Data> = either {
-      val (hrp, data) = parse(encoded).bind()
+    fun decode(encoded: String): ErrorOr<Bech32Data> = decode(encoded, lenient = false)
+
+    internal fun decode(encoded: String, lenient: Boolean): ErrorOr<Bech32Data> = either {
+      val (hrp, data) = parse(encoded, lenient).bind()
       val values = data.map { it.toByte() }.toByteArray()
       val encoding = verifyChecksum(hrp, values).bind()
       Bech32Data(encoding, hrp, values.sliceArray(0 until values.size - 6).toByteString())
