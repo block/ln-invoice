@@ -271,6 +271,9 @@ data class PaymentRequest(
           signature = signature,
           hash = hashData(decoded),
         ).also { request ->
+          // The constructor decodes descriptions leniently and validates the signature lazily so that parseLenient
+          // can build requests. Strict decoding and reading the payee key throw here instead, which the surrounding
+          // Either.catch turns into InvalidInvoice.
           validatedTaggedFields.find { it.tag == DESCRIPTION.tag }?.let { BitReader(it.data).text(it.size) }
           request.payeeNodePublicKey
         }
