@@ -32,10 +32,10 @@ import arrow.core.Option
 import arrow.core.flatMap
 import arrow.core.getOrElse
 import arrow.core.left
+import arrow.core.recover
 import arrow.core.raise.either
 import arrow.core.raise.ensure
 import arrow.core.raise.ensureNotNull
-import arrow.core.raise.result
 import arrow.core.right
 import arrow.core.some
 import arrow.core.toOption
@@ -104,9 +104,7 @@ data class PaymentRequest(
    * Validates the signature and returns the explicit or recovered payee node public key.
    * @throws InvalidInvoice if the signature is invalid, which requests from [parse] never have.
    */
-  val payeeNodePublicKey: ByteString by lazy {
-    decodePayeeNodePublicKey().getOrElse { throw it as? InvalidInvoice ?: InvalidInvoice("Invalid payee node public key", it) }
-  }
+  val payeeNodePublicKey: ByteString by lazy { decodePayeeNodePublicKey().orThrow() }
 
   /**
    * Returns [payeeNodePublicKey] when the signature is valid. Otherwise, returns the key recovered from the signature
@@ -114,16 +112,13 @@ data class PaymentRequest(
    * @throws InvalidInvoice if no key can be recovered from the signature.
    */
   val payeeNodePublicKeyLenient: ByteString by lazy {
-    result { payeeNodePublicKey }.getOrElse {
-      recoverPayeeNodePublicKeyLenient()
-        .getOrElse { throw it as? InvalidInvoice ?: InvalidInvoice("Cannot recover payee public key", it) }
-    }
+    decodePayeeNodePublicKey().recover { recoverPayeeNodePublicKeyLenient().bind() }.orThrow()
   }
 
   val routingInfo: List<RoutingInfo> =
     taggedFields.filter { it.tag == EXTRA_ROUTING_INFO.tag }.map { RoutingInfo.parse(it) }
 
-  private fun decodePayeeNodePublicKey(): Result<ByteString> = result {
+  private fun decodePayeeNodePublicKey(): Either<InvalidInvoice, ByteString> = either {
     val ellipticCurveSignature = decodeSignature().bind()
     val signatureRecoveryId = signature[64].toUByte().toInt()
     val explicitPayee = taggedFieldMap[PAYEE_NODE.tag]
@@ -137,13 +132,13 @@ data class PaymentRequest(
     payee.pubKey.toByteString()
   }
 
-  private fun recoverPayeeNodePublicKeyLenient(): Result<ByteString> = result {
+  private fun recoverPayeeNodePublicKeyLenient(): Either<InvalidInvoice, ByteString> = either {
     val ellipticCurveSignature = decodeSignature().bind()
     val digest = Sha256Hash.wrap(hash.toByteArray())
     recoverPayee(signature[64].toUByte().toInt(), ellipticCurveSignature, digest).bind().pubKey.toByteString()
   }
 
-  private fun decodeSignature(): Result<ECKey.ECDSASignature> = result {
+  private fun decodeSignature(): Either<InvalidInvoice, ECKey.ECDSASignature> = either {
     ensure(signature.size == 65) { InvalidInvoice("Signature must contain 65 bytes") }
     val r = BigInteger(signature.substring(0, 32).hex(), 16)
     val s = BigInteger(signature.substring(32, 64).hex(), 16)
@@ -154,7 +149,7 @@ data class PaymentRequest(
     ellipticCurveSignature: ECKey.ECDSASignature,
     signatureRecoveryId: Int,
     requireLowS: Boolean,
-  ): Result<Unit> = result {
+  ): Either<InvalidInvoice, Unit> = either {
     ensure(signatureRecoveryId in 0..3) { InvalidInvoice("Invalid signature recovery id") }
     val (r, s) = ellipticCurveSignature.r to ellipticCurveSignature.s
     val curveOrder = ECKey.ecDomainParameters().n
@@ -170,22 +165,23 @@ data class PaymentRequest(
     ellipticCurveSignature: ECKey.ECDSASignature,
     digest: Sha256Hash,
     payee: ECKey,
-  ): Result<Unit> = result {
+  ): Either<InvalidInvoice, Unit> = either {
     ensure(payee.verify(digest, ellipticCurveSignature)) { InvalidInvoice("Invalid invoice signature") }
   }
 
-  private fun decodeExplicitPayee(field: TaggedField): Result<ECKey> = result {
-    ECKey.fromPublicOnly(BitReader(field.data).byteString(264).toByteArray())
-  }
+  private fun decodeExplicitPayee(field: TaggedField): Either<InvalidInvoice, ECKey> =
+    Either.catch { ECKey.fromPublicOnly(BitReader(field.data).byteString(264).toByteArray()) }
+      .mapLeft { InvalidInvoice("Invalid payee node public key", it) }
 
   private fun recoverPayee(
     signatureRecoveryId: Int,
     ellipticCurveSignature: ECKey.ECDSASignature,
     digest: Sha256Hash,
-  ): Result<ECKey> = result {
-    ensureNotNull(ECKey.recoverFromSignature(signatureRecoveryId, ellipticCurveSignature, digest, true)) {
-      InvalidInvoice("Cannot recover payee public key")
-    }
+  ): Either<InvalidInvoice, ECKey> = either {
+    val payee = Either.catch { ECKey.recoverFromSignature(signatureRecoveryId, ellipticCurveSignature, digest, true) }
+      .mapLeft { InvalidInvoice("Cannot recover payee public key", it) }
+      .bind()
+    ensureNotNull(payee) { InvalidInvoice("Cannot recover payee public key") }
   }
 
   companion object {
