@@ -26,6 +26,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.StringSpec
 import io.kotest.matchers.should
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.int
 import io.kotest.property.arbitrary.long
@@ -432,6 +433,22 @@ class PaymentRequestMalformedInputTest : StringSpec({
     ).shouldBeRight()
 
     shouldThrow<InvalidInvoice> { request.payeeNodePublicKey }
+    request.payeeNodePublicKeyLenient shouldBe signer.pubKey.toByteString()
+  }
+
+  "the lenient payee key prefers a valid explicit payee over the key recovered with a wrong recovery id" {
+    val signer = ECKey()
+    val payee = signer.pubKey.toByteString().toWords()
+    val fields = sampleFields + TaggedField(FieldTags.PAYEE_NODE.tag, payee.size, payee)
+    val digest = invoiceDigest(fields)
+    val signature = signer.sign(digest)
+    val wrongRecoveryId = 1 - signer.findRecoveryId(digest, signature).toInt()
+    val recovered = ECKey.recoverFromSignature(wrongRecoveryId, signature, digest, true)!!.pubKey.toByteString()
+    recovered shouldNotBe signer.pubKey.toByteString()
+
+    val request = PaymentRequest.parseLenient(invoice(fields, signature = compactSignature(signature.r, signature.s, wrongRecoveryId)))
+      .shouldBeRight()
+    request.payeeNodePublicKey shouldBe signer.pubKey.toByteString()
     request.payeeNodePublicKeyLenient shouldBe signer.pubKey.toByteString()
   }
 

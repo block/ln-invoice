@@ -84,6 +84,7 @@ data class PaymentRequest(
   /**
    * SHA2 256-bit hash of the original description.
    * Usually set when the description is too long to store in the invoice itself.
+   * @throws IndexOutOfBoundsException if the field is too short, which requests from [parse] never have.
    */
   val descriptionHash: Option<String> by lazy {
     taggedFieldMap[DESCRIPTION_HASH.tag].toOption().map { BitReader(it.data).byteString(256).hex() }
@@ -324,7 +325,8 @@ data class PaymentRequest(
      * This skips checks added in 0.0.7. The invoice may use Bech32m or have characters around it, repeat the payment
      * hash, lack or repeat the payment secret or description, or have tagged fields of unexpected length. A description
      * that is not valid BOLT1 text is decoded with replacement characters. As in 0.0.6, a malformed description hash
-     * or an overflowing expiry only throws when [descriptionHash] or [expiry] is read. [payeeNodePublicKey] throws
+     * only throws when [descriptionHash] is read. An overflowing expiry throws [ArithmeticException] when [expiry] is
+     * read, where 0.0.6 returned a wrapped value. [payeeNodePublicKey] throws
      * [InvalidInvoice] when the signature is invalid; [payeeNodePublicKeyLenient] returns the key 0.0.6 recovered.
      *
      * A payment hash is still required, and the checksum, network, exact amount, timestamp, required feature bits, and

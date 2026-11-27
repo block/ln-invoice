@@ -44,8 +44,8 @@ read with `parseLenient`.
 
 `parseLenient` also accepts invoices that BOLT-11 requires readers to reject: ones without a payment secret, without a
 description or description hash, or with repeated or wrongly sized fields. It accepts Bech32m, characters around the
-invoice, and descriptions that are not valid BOLT-1 text. As in 0.0.6, a malformed description hash or an overflowing
-expiry throws only when `descriptionHash` or `expiry` is read. It still rejects a bad checksum, an unknown network, a
+invoice, and descriptions that are not valid BOLT-1 text. As in 0.0.6, a malformed description hash throws only when
+`descriptionHash` is read. An overflowing expiry throws when `expiry` is read, where 0.0.6 returned a wrapped value. It still rejects a bad checksum, an unknown network, a
 missing payment hash, an invalid amount, and unknown required feature bits.
 
 ```kotlin
