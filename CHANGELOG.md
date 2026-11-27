@@ -1,6 +1,13 @@
 Change Log
 ==========
 
+Version 0.0.8 *(2026-11-27)*
+----------------------------
+
+* Adds `PaymentRequest.parseLenient` and `payeeNodePublicKeyLenient` for reading invoices stored under 0.0.6 that 0.0.7 rejects. They do not follow BOLT-11; use `parse` for new invoices.
+* Decodes `descriptionHash`, `expiry`, and `payeeNodePublicKey` on first read again. Constructing a `PaymentRequest` directly or calling `copy` no longer validates the signature or description text eagerly; `parse` still validates them.
+* `payeeNodePublicKey` always throws `InvalidInvoice` when the signature or payee key is invalid.
+
 Version 0.0.7 *(2026-11-19)*
 ----------------------------
 
