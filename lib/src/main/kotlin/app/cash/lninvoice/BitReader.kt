@@ -101,6 +101,12 @@ class BitReader(
     return text
   }
 
+  /** Read `bytes` 5-bit words as UTF-8 text, replacing invalid UTF-8 and allowing any code point. */
+  internal fun textLenient(bytes: Int): String {
+    val bits = bytes * 5
+    return byteString(bits - bits % 8).string(Charsets.UTF_8)
+  }
+
   /**
    * Reads [wordCount] 5-bit words, combines them into a single number (MSB first),
    * and returns the set of bit positions that are set.

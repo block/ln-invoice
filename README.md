@@ -31,6 +31,27 @@ simply add `.orThrow()`.
 val request: PaymentRequest = PaymentRequest.parse(sample).orThrow()
 ```
 
+### Lenient parsing of stored invoices
+
+`PaymentRequest.parse` follows BOLT-11. `PaymentRequest.parseLenient` does not: it accepts invoices that version 0.0.6
+accepted but that later versions reject, so that invoices already stored before an upgrade can still be read back.
+Use `parse` for every invoice you have not yet accepted, and `parseLenient` only for invoices you stored earlier.
+
+`parseLenient` does not validate the signature. Reading `payeeNodePublicKey` checks it and throws `InvalidInvoice` when
+it is invalid. `payeeNodePublicKeyLenient` instead falls back to the key recovered from the signature, ignoring any
+explicit payee field, as 0.0.6 did. It returns a key that may not have signed the invoice, so use it only for invoices
+read with `parseLenient`.
+
+`parseLenient` also accepts invoices that BOLT-11 requires readers to reject: ones without a payment secret, without a
+description or description hash, or with repeated or wrongly sized fields. It accepts Bech32m, characters around the
+invoice, and descriptions that are not valid BOLT-1 text. As in 0.0.6, a malformed description hash throws only when
+`descriptionHash` is read. An overflowing expiry throws when `expiry` is read, where 0.0.6 returned a wrapped value. It still rejects a bad checksum, an unknown network, a
+missing payment hash, an invalid amount, and unknown required feature bits.
+
+```kotlin
+val stored: ErrorOr<PaymentRequest> = PaymentRequest.parse(encoded).recover { PaymentRequest.parseLenient(encoded).bind() }
+```
+
 Fields in `PaymentRequest` instances that contain binary data use 
 [Okio's ByteString](https://square.github.io/okio/).
 If you need this as a byte array, call `.toByteArray()`
